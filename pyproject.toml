@@ -4,8 +4,12 @@ requires-python = ">=3.10,<3.14"
 version = "0.1.0"
 dependencies = [
     "graphviz>=0.21",
+    "instaloader>=4.10",
+    "notion-client>=2.2.1",
     "prefect[github]>=3.5.0",
     "python-dotenv>=1.2.1",
+    "requests>=2.31.0",
+    "tweepy>=4.14.0",
 ]
 
 
