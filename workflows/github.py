@@ -2,12 +2,14 @@ import asyncio
 import subprocess
 import shutil
 import time
+import json
 
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from prefect import flow, task
 from prefect.cache_policies import NO_CACHE
+
 from prefect_github import GitHubCredentials
 from prefect_github.repository_owner import query_repository_owner_repositories
 from prefect_github.repository import query_repository
@@ -20,6 +22,7 @@ def get_all_repositories(
 ) -> list[dict]:
     """
     Get all repositories for a given owner with necessary fields for cloning.
+    Returns repositories sorted by name for deterministic ordering.
     """
     # Query repositories - specify fields we want on each repository node
     # The library will automatically include nodes when we specify return_fields
@@ -28,7 +31,7 @@ def get_all_repositories(
     # Add retry logic for transient API errors (like 502 Bad Gateway)
     max_retries = 3
     retry_delay = 2  # seconds
-    
+
     for attempt in range(max_retries):
         try:
             repositories = asyncio.run(
@@ -56,26 +59,23 @@ def get_all_repositories(
             else:
                 # Not a transient error, re-raise immediately
                 raise
-    
+
     # Extract repository information
     repo_list = []
     repos_data = repositories.get("nodes", [])
-
-    print(f"Found {len(repo_list)} repositories for {owner}")
-    print(f"Repositories: {[repo.get("name") for repo in repos_data]}")
 
     for repo in repos_data:
         repo_url = repo.get("url", "")
         # Ensure clone_url ends with .git
         clone_url = repo_url if repo_url.endswith(".git") else f"{repo_url}.git"
-        
+
         # Default branch - we don't query it to avoid permission issues
         # Most repos use "main" or "master", default to "main"
         default_branch = "main"
-        
+
         # Use the owner parameter we already have (since we're querying by owner)
         owner_login = owner
-        
+
         repo_list.append({
             "name": repo.get("name"),
             "url": repo_url,
@@ -84,7 +84,13 @@ def get_all_repositories(
             "default_branch": default_branch,
             "owner": owner_login
         })
-    
+
+    # Sort repositories by name for deterministic ordering
+    repo_list.sort(key=lambda r: r["name"])
+
+    print(f"Found {len(repo_list)} repositories for {owner}")
+    print(f"Repositories: {[repo['name'] for repo in repo_list]}")
+
     return repo_list
 
 
@@ -98,19 +104,19 @@ def get_repository_commits(
 ) -> list[dict]:
     """
     Get commits for a repository up until a specific date using GitHub GraphQL API.
-    
+
     Uses the Prefect GitHub integration's query_repository function to fetch
     commit history from the repository's default branch.
-    
+
     Args:
         owner: The repository owner (username or organization)
         repo_name: The repository name
         github_credentials: GitHub credentials for authentication
         until_date: Optional datetime to filter commits up to this date
         max_commits: Maximum number of commits to retrieve (default: 100)
-    
+
     Returns:
-        List of commit dictionaries with keys: sha, message, author_name, 
+        List of commit dictionaries with keys: sha, message, author_name,
         author_email, date, url
     """
     try:
@@ -129,30 +135,30 @@ def get_repository_commits(
                 ]
             )
         )
-        
+
         commits = []
-        
+
         # Extract commits from the GraphQL response
         # Structure: repository -> default_branch_ref -> target -> history -> edges -> node
         default_branch_ref = result.get("default_branch_ref")
         if not default_branch_ref:
             return commits
-        
+
         target = default_branch_ref.get("target", {})
         if not target:
             return commits
-        
+
         history = target.get("history", {})
         edges = history.get("edges", [])
-        
+
         for edge in edges:
             node = edge.get("node", {})
             if not node:
                 continue
-            
+
             # Extract commit information
             commit_date_str = node.get("committed_date") or node.get("author", {}).get("date", "")
-            
+
             # Parse commit date if available
             commit_date = None
             if commit_date_str:
@@ -161,7 +167,7 @@ def get_repository_commits(
                     commit_date = datetime.fromisoformat(commit_date_str.replace("Z", "+00:00"))
                 except (ValueError, AttributeError):
                     pass
-            
+
             # Filter by until_date if provided
             if until_date and commit_date:
                 # Ensure both dates are timezone-aware for comparison
@@ -169,11 +175,11 @@ def get_repository_commits(
                     until_date = until_date.replace(tzinfo=timezone.utc)
                 if commit_date.tzinfo is None:
                     commit_date = commit_date.replace(tzinfo=timezone.utc)
-                
+
                 # Skip commits after until_date
                 if commit_date > until_date:
                     continue
-            
+
             author = node.get("author", {})
             commits.append({
                 "sha": node.get("oid", ""),
@@ -183,13 +189,13 @@ def get_repository_commits(
                 "date": commit_date_str,
                 "url": node.get("url", ""),
             })
-            
+
             # Limit number of commits
             if len(commits) >= max_commits:
                 break
-        
+
         return commits
-    
+
     except Exception as e:
         # Log error and return empty list
         print(f"Error fetching commits for {owner}/{repo_name}: {e}")
@@ -202,27 +208,31 @@ def clone_repository_to_local(
     github_credentials: GitHubCredentials,
     local_backup_dir: Path = Path("./backups/local")
 ) -> Path:
-    """Clone a repository to the local filesystem."""
+    """
+    Clone a repository to the local filesystem with full history.
+    Note: Removes --depth 1 to enable commit history queries.
+    """
     local_backup_dir.mkdir(parents=True, exist_ok=True)
-    
+
     repo_path = local_backup_dir / repo_info["owner"] / repo_info["name"]
-    
+
     # Remove existing directory if it exists
     if repo_path.exists():
         shutil.rmtree(repo_path)
-    
+
     # Clone the repository
     clone_url = repo_info["clone_url"]
-    
+
     # If private repo, use token in URL
     if repo_info["is_private"]:
         token = github_credentials.token.get_secret_value()
         # Format: https://token@github.com/owner/repo.git
         clone_url = clone_url.replace("https://", f"https://{token}@")
-    
+
     try:
+        # FIXED: Removed --depth 1 to enable full commit history queries
         subprocess.run(
-            ["git", "clone", "--depth", "1", clone_url, str(repo_path)],
+            ["git", "clone", clone_url, str(repo_path)],
             check=True,
             capture_output=True,
             text=True
@@ -231,7 +241,7 @@ def clone_repository_to_local(
     except subprocess.CalledProcessError as e:
         print(f"Error cloning {repo_info['name']}: {e.stderr}")
         raise
-    
+
     return repo_path
 
 
@@ -240,7 +250,10 @@ def get_commits_from_local_repo(
     repo_path: Path,
     until_date: datetime = None
 ) -> list[dict]:
-    """Get commits from a locally cloned repository using git log."""
+    """
+    Get commits from a locally cloned repository using git log.
+    Uses full ISO timestamp format for precise date filtering.
+    """
     if until_date:
         # Ensure until_date is UTC-aware
         if until_date.tzinfo is None:
@@ -248,23 +261,25 @@ def get_commits_from_local_repo(
         elif until_date.tzinfo != timezone.utc:
             # Convert to UTC if it's in a different timezone
             until_date = until_date.astimezone(timezone.utc)
-        
-        # Format date for git log: --until="2024-01-01"
-        date_str = until_date.strftime("%Y-%m-%d")
+
+        # FIXED: Use full timestamp format with explicit time for precise boundary
+        date_str = until_date.strftime("%Y-%m-%d %H:%M:%S")
         result = subprocess.run(
-            ["git", "-C", str(repo_path), "log", f"--until={date_str}", "--pretty=format:%H|%an|%ae|%ad|%s", "--date=iso"],
+            ["git", "-C", str(repo_path), "log", f"--until={date_str}",
+             "--pretty=format:%H|%an|%ae|%ad|%s", "--date=iso-strict"],
             capture_output=True,
             text=True,
             check=True
         )
     else:
         result = subprocess.run(
-            ["git", "-C", str(repo_path), "log", "--pretty=format:%H|%an|%ae|%ad|%s", "--date=iso"],
+            ["git", "-C", str(repo_path), "log",
+             "--pretty=format:%H|%an|%ae|%ad|%s", "--date=iso-strict"],
             capture_output=True,
             text=True,
             check=True
         )
-    
+
     commits = []
     for line in result.stdout.strip().split("\n"):
         if line:
@@ -277,7 +292,7 @@ def get_commits_from_local_repo(
                     "date": parts[3],
                     "message": parts[4]
                 })
-    
+
     return commits
 
 
@@ -290,19 +305,19 @@ def get_commits_from_local_repo(
 #     Copy the local repository backup to a remote filesystem (e.g., NAS).
 #     """
 #     remote_backup_dir.mkdir(parents=True, exist_ok=True)
-    
+
 #     # Determine the relative path structure
 #     # Assuming local_repo_path is like: ./backups/local/owner/repo
 #     relative_parts = local_repo_path.parts[-2:]  # owner and repo name
 #     remote_repo_path = remote_backup_dir / relative_parts[0] / relative_parts[1]
-    
+
 #     # Remove existing directory if it exists
 #     if remote_repo_path.exists():
 #         shutil.rmtree(remote_repo_path)
-    
+
 #     # Copy the entire directory
 #     shutil.copytree(local_repo_path, remote_repo_path)
-    
+
 #     print(f"Successfully backed up {local_repo_path.name} to {remote_repo_path}")
 #     return remote_repo_path
 
@@ -311,49 +326,80 @@ def get_commits_from_local_repo(
 def process_repository(
     repo_info: dict,
     github_credentials: GitHubCredentials,
-    until_date: datetime = None,
+    until_date: datetime,
     local_backup_dir: Path = Path("./backups/local"),
 ) -> dict:
     """
     Process a single repository: clone, get commits, and backup.
+
+    Args:
+        repo_info: Repository information dictionary
+        github_credentials: GitHub credentials for authentication
+        until_date: Cutoff date for commit history (required for idempotency)
+        local_backup_dir: Base directory for backups
+
+    Returns:
+        Dictionary with repository backup statistics
     """
-    # Clone to local filesystem
-    local_path = clone_repository_to_local(repo_info, github_credentials, local_backup_dir)
-    
-    # Get commits up until the current date (or specified date)
-    if until_date is None:
-        until_date = datetime.now(timezone.utc)
-    elif until_date.tzinfo is None:
-        # If until_date is naive, assume it's UTC
+    # FIXED: until_date is now required (no default datetime.now())
+    # Validate that until_date is timezone-aware
+    if until_date.tzinfo is None:
         until_date = until_date.replace(tzinfo=timezone.utc)
-    
-    commits = get_commits_from_local_repo(local_path, until_date)
-    
-    repo_info = {
+
+    # Clone to local filesystem
+    local_path = clone_repository_to_local(
+        repo_info=repo_info,
+        github_credentials=github_credentials,
+        local_backup_dir=local_backup_dir,
+    )
+
+    # FIXED: Corrected parameter name from local_path to repo_path
+    commits = get_commits_from_local_repo(
+        repo_path=local_path,
+        until_date=until_date,
+    )
+
+    result = {
         "repo_name": repo_info["name"],
         "local_path": str(local_path),
         "commit_count": len(commits),
-        "commits": commits[:10]  # Return first 10 commits as sample
+        # Return first 10 commits as sample
+        "commits": commits[:10]
     }
-    return repo_info
+    return result
 
 
 @flow()
 def backup_github_repositories(
     owner: str,
     until_date: datetime,
+    credentials_block_name: str = "github-freddiev4",
 ):
     """
     Main flow to backup all GitHub repositories for a given owner.
+
+    Args:
+        owner: GitHub username or organization name
+        until_date: Snapshot date for idempotent backups (all runs with same date produce identical results)
+        credentials_block_name: Name of the Prefect GitHub credentials block
+
+    Returns:
+        List of repository backup results
     """
+    # Ensure until_date is timezone-aware
+    if until_date.tzinfo is None:
+        until_date = until_date.replace(tzinfo=timezone.utc)
+
+    print(f"Starting GitHub backup for {owner} (snapshot date: {until_date.isoformat()})")
+
     # Load credentials once in the flow
-    github_credentials = GitHubCredentials.load("github-freddiev4")
-    
-    # Get all repositories for the owner
+    github_credentials = GitHubCredentials.load(credentials_block_name)
+
+    # Get all repositories for the owner (sorted for deterministic ordering)
     repositories = get_all_repositories(owner, github_credentials)
-    
+
     print(f"Found {len(repositories)} repositories for {owner}")
-    
+
     # Process each repository - Prefect will automatically parallelize these tasks
     results = []
     for repo_info in repositories:
@@ -363,13 +409,33 @@ def backup_github_repositories(
             until_date=until_date,
         )
         results.append(result)
-    
+
+    # Save backup manifest
+    manifest = {
+        "backup_date": until_date.isoformat(),
+        "execution_timestamp": datetime.now(timezone.utc).isoformat(),
+        "owner": owner,
+        "repository_count": len(results),
+        "repositories": results,
+    }
+
+    manifest_path = Path("./backups/local") / owner / "backup_manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2, sort_keys=True)
+
     print(f"Successfully backed up {len(results)} repositories")
+    print(f"Manifest saved to {manifest_path}")
+
     return results
 
 
 if __name__ == "__main__":
+    # FIXED: Use fixed date for testing idempotency instead of datetime.now()
+    # All runs with the same until_date will produce identical results
+    test_date = datetime(2025, 12, 28, 23, 59, 59, tzinfo=timezone.utc)
+
     backup_github_repositories(
-        owner="freddiev4", 
-        until_date=datetime.now(timezone.utc) - timedelta(days=1),
+        owner="freddiev4",
+        until_date=test_date,
     )
