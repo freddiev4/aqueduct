@@ -8,6 +8,7 @@ from pathlib import Path
 
 from prefect import flow, task
 from prefect.cache_policies import NO_CACHE
+
 from prefect_github import GitHubCredentials
 from prefect_github.repository_owner import query_repository_owner_repositories
 from prefect_github.repository import query_repository
@@ -318,7 +319,11 @@ def process_repository(
     Process a single repository: clone, get commits, and backup.
     """
     # Clone to local filesystem
-    local_path = clone_repository_to_local(repo_info, github_credentials, local_backup_dir)
+    local_path = clone_repository_to_local(
+        repo_info=repo_info, 
+        github_credentials=github_credentials, 
+        local_backup_dir=local_backup_dir,
+    )
     
     # Get commits up until the current date (or specified date)
     if until_date is None:
@@ -327,13 +332,17 @@ def process_repository(
         # If until_date is naive, assume it's UTC
         until_date = until_date.replace(tzinfo=timezone.utc)
     
-    commits = get_commits_from_local_repo(local_path, until_date)
+    commits = get_commits_from_local_repo(
+        local_path=local_path, 
+        until_date=until_date,
+    )
     
     repo_info = {
         "repo_name": repo_info["name"],
         "local_path": str(local_path),
         "commit_count": len(commits),
-        "commits": commits[:10]  # Return first 10 commits as sample
+        # Return first 10 commits as sample
+        "commits": commits[:10]
     }
     return repo_info
 
