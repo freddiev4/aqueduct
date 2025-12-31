@@ -18,18 +18,20 @@ except ImportError:
 def download_user_posts(
     username: str,
     password: Optional[str],
+    snapshot_date: datetime,
     local_backup_dir: Path = Path("./backups/local"),
     max_posts: Optional[int] = None,
 ) -> dict:
     """
-    Download all posts from the authenticated user's profile.
-    
+    Download all posts from the authenticated user's profile up to a snapshot date.
+
     Args:
         username: Instagram username
         password: Instagram password (optional, will prompt if not provided)
+        snapshot_date: Only download posts created before or on this date (UTC)
         local_backup_dir: Base directory for backups
         max_posts: Maximum number of posts to download (None for all)
-    
+
     Returns:
         Dictionary with download statistics
     """
@@ -74,17 +76,51 @@ def download_user_posts(
     # Download posts
     post_count = 0
     downloaded_posts = []
-    
-    print(f"Starting download of posts for {username}...")
+
+    print(f"Starting download of posts for {username} (snapshot date: {snapshot_date.isoformat()})...")
+
+    # Collect all posts and sort deterministically
+    all_posts = []
     for post in profile.get_posts():
+        # Get post date and ensure UTC timezone
+        post_date = post.date_utc
+        if post_date:
+            if post_date.tzinfo is None:
+                post_date = post_date.replace(tzinfo=timezone.utc)
+            elif post_date.tzinfo != timezone.utc:
+                post_date = post_date.astimezone(timezone.utc)
+
+            # Apply temporal filtering - only include posts up to snapshot_date
+            if post_date > snapshot_date:
+                continue
+
+        all_posts.append(post)
+
+    # Sort posts by date (newest first) for deterministic ordering
+    all_posts.sort(key=lambda p: p.date_utc if p.date_utc else datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+
+    # Download posts
+    for post in all_posts:
         if max_posts and post_count >= max_posts:
             break
-        
+
         try:
             loader.download_post(post, target=username)
+
+            # Ensure date is properly formatted in UTC
+            post_date = post.date_utc
+            if post_date:
+                if post_date.tzinfo is None:
+                    post_date = post_date.replace(tzinfo=timezone.utc)
+                elif post_date.tzinfo != timezone.utc:
+                    post_date = post_date.astimezone(timezone.utc)
+                date_str = post_date.isoformat()
+            else:
+                date_str = None
+
             downloaded_posts.append({
                 "shortcode": post.shortcode,
-                "date": post.date_utc.isoformat() if post.date_utc else None,
+                "date": date_str,
                 "is_video": post.is_video,
                 "caption": post.caption[:100] + "..." if post.caption and len(post.caption) > 100 else post.caption,
             })
@@ -100,9 +136,9 @@ def download_user_posts(
         json.dump({
             "username": username,
             "total_posts_downloaded": post_count,
-            "download_date": datetime.now(timezone.utc).isoformat(),
+            "snapshot_date": snapshot_date.isoformat(),
             "posts": downloaded_posts,
-        }, f, indent=2)
+        }, f, indent=2, sort_keys=True)
     
     print(f"Downloaded {post_count} posts to {backup_path}")
     
@@ -118,18 +154,20 @@ def download_user_posts(
 def download_saved_posts(
     username: str,
     password: Optional[str],
+    snapshot_date: datetime,
     local_backup_dir: Path = Path("./backups/local"),
     max_posts: Optional[int] = None,
 ) -> dict:
     """
-    Download all saved/bookmarked posts from the authenticated user's profile.
-    
+    Download all saved/bookmarked posts from the authenticated user's profile up to a snapshot date.
+
     Args:
         username: Instagram username
         password: Instagram password (optional, will prompt if not provided)
+        snapshot_date: Only download posts created before or on this date (UTC)
         local_backup_dir: Base directory for backups
         max_posts: Maximum number of saved posts to download (None for all)
-    
+
     Returns:
         Dictionary with download statistics
     """
@@ -174,33 +212,66 @@ def download_saved_posts(
     # Download saved posts
     post_count = 0
     downloaded_posts = []
-    
-    print(f"Starting download of saved posts for {username}...")
+
+    print(f"Starting download of saved posts for {username} (snapshot date: {snapshot_date.isoformat()})...")
+
+    # Collect all saved posts and sort deterministically
+    all_saved_posts = []
     for post in profile.get_saved_posts():
+        # Get post date and ensure UTC timezone
+        post_date = post.date_utc
+        if post_date:
+            if post_date.tzinfo is None:
+                post_date = post_date.replace(tzinfo=timezone.utc)
+            elif post_date.tzinfo != timezone.utc:
+                post_date = post_date.astimezone(timezone.utc)
+
+            # Apply temporal filtering - only include posts up to snapshot_date
+            if post_date > snapshot_date:
+                continue
+
+        all_saved_posts.append(post)
+
+    # Sort posts by date (newest first) for deterministic ordering
+    all_saved_posts.sort(key=lambda p: p.date_utc if p.date_utc else datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+
+    # Download saved posts
+    for post in all_saved_posts:
         if max_posts and post_count >= max_posts:
             break
-        
+
         try:
             # Get the original post owner's username for organization
             owner_username = post.owner_username
-            
+
             # Create subdirectory for each post owner
             owner_backup_path = backup_path / owner_username
             owner_backup_path.mkdir(parents=True, exist_ok=True)
-            
+
             # Temporarily set directory for this post
             original_dirname = loader.dirname_pattern
             loader.dirname_pattern = str(owner_backup_path)
-            
+
             loader.download_post(post, target=owner_username)
-            
+
             # Restore original directory pattern
             loader.dirname_pattern = original_dirname
-            
+
+            # Ensure date is properly formatted in UTC
+            post_date = post.date_utc
+            if post_date:
+                if post_date.tzinfo is None:
+                    post_date = post_date.replace(tzinfo=timezone.utc)
+                elif post_date.tzinfo != timezone.utc:
+                    post_date = post_date.astimezone(timezone.utc)
+                date_str = post_date.isoformat()
+            else:
+                date_str = None
+
             downloaded_posts.append({
                 "shortcode": post.shortcode,
                 "owner_username": owner_username,
-                "date": post.date_utc.isoformat() if post.date_utc else None,
+                "date": date_str,
                 "is_video": post.is_video,
                 "caption": post.caption[:100] + "..." if post.caption and len(post.caption) > 100 else post.caption,
             })
@@ -216,9 +287,9 @@ def download_saved_posts(
         json.dump({
             "username": username,
             "total_saved_posts_downloaded": post_count,
-            "download_date": datetime.now(timezone.utc).isoformat(),
+            "snapshot_date": snapshot_date.isoformat(),
             "posts": downloaded_posts,
-        }, f, indent=2)
+        }, f, indent=2, sort_keys=True)
     
     print(f"Downloaded {post_count} saved posts to {backup_path}")
     
@@ -234,6 +305,7 @@ def download_saved_posts(
 def backup_instagram(
     username: str,
     password: Optional[str] = None,
+    snapshot_date: Optional[datetime] = None,
     download_posts: bool = True,
     download_saved_posts: bool = True,
     max_posts: Optional[int] = None,
@@ -241,17 +313,26 @@ def backup_instagram(
     local_backup_dir: Path = Path("./backups/local"),
 ):
     """
-    Main flow to backup Instagram posts and saved posts.
-    
+    Main flow to backup Instagram posts and saved posts up to a snapshot date.
+
     Args:
         username: Instagram username
         password: Instagram password (optional, will use saved session if not provided)
+        snapshot_date: Only download posts created before or on this date (UTC). Defaults to current time.
         download_posts: Whether to download user's own posts
         download_saved_posts: Whether to download saved/bookmarked posts
         max_posts: Maximum number of posts to download (None for all)
         max_saved_posts: Maximum number of saved posts to download (None for all)
         local_backup_dir: Base directory for backups
     """
+    # Default to current UTC time if no snapshot_date provided
+    if snapshot_date is None:
+        snapshot_date = datetime.now(timezone.utc)
+    # Ensure snapshot_date is timezone-aware UTC
+    elif snapshot_date.tzinfo is None:
+        snapshot_date = snapshot_date.replace(tzinfo=timezone.utc)
+    elif snapshot_date.tzinfo != timezone.utc:
+        snapshot_date = snapshot_date.astimezone(timezone.utc)
     results = {}
     
     if download_posts:
@@ -259,16 +340,18 @@ def backup_instagram(
         posts_result = download_user_posts(
             username=username,
             password=password,
+            snapshot_date=snapshot_date,
             local_backup_dir=local_backup_dir,
             max_posts=max_posts,
         )
         results["posts"] = posts_result
-    
+
     if download_saved_posts:
         print(f"Backing up saved posts for {username}...")
         saved_posts_result = download_saved_posts(
             username=username,
             password=password,
+            snapshot_date=snapshot_date,
             local_backup_dir=local_backup_dir,
             max_posts=max_saved_posts,
         )

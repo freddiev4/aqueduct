@@ -77,7 +77,13 @@ def get_all_pages(
             print(f"Error fetching pages: {e}")
             break
     
-    print(f"Found {len(all_pages)} pages")
+    # Sort pages deterministically by last_edited_time and id
+    all_pages.sort(key=lambda p: (
+        p.get("last_edited_time", ""),
+        p.get("id", "")
+    ))
+
+    print(f"Found {len(all_pages)} pages (sorted by last_edited_time, id)")
     return all_pages
 
 
@@ -357,16 +363,18 @@ def fetch_all_child_blocks(
 def backup_page(
     page: Dict[str, Any],
     notion_token: str,
+    snapshot_date: datetime,
     local_backup_dir: Path = Path("./backups/local"),
 ) -> Dict[str, Any]:
     """
     Backup a single Notion page with all its content and media.
-    
+
     Args:
         page: Notion page dictionary
         notion_token: Notion integration token
+        snapshot_date: Snapshot date for this backup (UTC)
         local_backup_dir: Base directory for backups
-    
+
     Returns:
         Dictionary with backup statistics
     """
@@ -407,7 +415,7 @@ def backup_page(
     # Convert blocks to markdown and download media
     markdown_content = f"# {title}\n\n"
     markdown_content += f"*Page ID: {page_id}*\n"
-    markdown_content += f"*Backed up: {datetime.now(timezone.utc).isoformat()}*\n\n"
+    markdown_content += f"*Backed up: {snapshot_date.isoformat()}*\n\n"
     markdown_content += "---\n\n"
     
     # Track toggle state for proper closing
@@ -499,15 +507,15 @@ def backup_page(
         "last_edited_time": page.get("last_edited_time", ""),
         "url": page.get("url", ""),
         "properties": page_properties,
-        "backup_date": datetime.now(timezone.utc).isoformat(),
+        "snapshot_date": snapshot_date.isoformat(),
         "block_count": len(all_blocks),
         "media_count": len(media_files),
         "media_files": media_files,
     }
-    
+
     metadata_file = page_dir / "metadata.json"
     with open(metadata_file, "w", encoding="utf-8") as f:
-        json.dump(metadata, f, indent=2, ensure_ascii=False)
+        json.dump(metadata, f, indent=2, ensure_ascii=False, sort_keys=True)
     
     print(f"  - Blocks: {len(all_blocks)}, Media: {len(media_files)}")
     
@@ -523,17 +531,27 @@ def backup_page(
 @flow()
 def backup_notion(
     notion_token: str,
+    snapshot_date: Optional[datetime] = None,
     local_backup_dir: Path = Path("./backups/local"),
     max_pages: Optional[int] = None,
 ):
     """
-    Main flow to backup all Notion pages.
-    
+    Main flow to backup all Notion pages up to a snapshot date.
+
     Args:
         notion_token: Notion integration token (get from https://www.notion.so/my-integrations)
+        snapshot_date: Only backup pages last edited before or on this date (UTC). Defaults to current time.
         local_backup_dir: Base directory for backups
         max_pages: Maximum number of pages to backup (None for all)
     """
+    # Default to current UTC time if no snapshot_date provided
+    if snapshot_date is None:
+        snapshot_date = datetime.now(timezone.utc)
+    # Ensure snapshot_date is timezone-aware UTC
+    elif snapshot_date.tzinfo is None:
+        snapshot_date = snapshot_date.replace(tzinfo=timezone.utc)
+    elif snapshot_date.tzinfo != timezone.utc:
+        snapshot_date = snapshot_date.astimezone(timezone.utc)
     print("Starting Notion backup...")
     
     # Get all pages
@@ -541,12 +559,33 @@ def backup_notion(
         notion_token=notion_token,
         local_backup_dir=local_backup_dir,
     )
-    
+
+    # Filter pages by last_edited_time (only include pages edited up to snapshot_date)
+    filtered_pages = []
+    for page in pages:
+        last_edited = page.get("last_edited_time")
+        if last_edited:
+            # Parse ISO 8601 format (Notion returns timestamps like "2024-01-01T12:00:00.000Z")
+            edited_dt = datetime.fromisoformat(last_edited.replace("Z", "+00:00"))
+            if edited_dt.tzinfo is None:
+                edited_dt = edited_dt.replace(tzinfo=timezone.utc)
+            elif edited_dt.tzinfo != timezone.utc:
+                edited_dt = edited_dt.astimezone(timezone.utc)
+
+            if edited_dt <= snapshot_date:
+                filtered_pages.append(page)
+        else:
+            # Include pages without edit time
+            filtered_pages.append(page)
+
+    pages = filtered_pages
+    print(f"Found {len(pages)} pages edited up to {snapshot_date.isoformat()}")
+
     if max_pages:
         pages = pages[:max_pages]
-    
+
     print(f"Backing up {len(pages)} pages...")
-    
+
     # Backup each page
     results = []
     for i, page in enumerate(pages, 1):
@@ -554,6 +593,7 @@ def backup_notion(
             result = backup_page(
                 page=page,
                 notion_token=notion_token,
+                snapshot_date=snapshot_date,
                 local_backup_dir=local_backup_dir,
             )
             results.append(result)
@@ -564,18 +604,18 @@ def backup_notion(
     
     # Save summary
     summary = {
-        "backup_date": datetime.now(timezone.utc).isoformat(),
+        "snapshot_date": snapshot_date.isoformat(),
         "total_pages": len(pages),
         "pages_backed_up": len(results),
         "total_blocks": sum(r.get("block_count", 0) for r in results),
         "total_media": sum(r.get("media_count", 0) for r in results),
         "pages": results,
     }
-    
+
     summary_file = local_backup_dir / "notion" / "backup_summary.json"
     summary_file.parent.mkdir(parents=True, exist_ok=True)
     with open(summary_file, "w", encoding="utf-8") as f:
-        json.dump(summary, f, indent=2, ensure_ascii=False)
+        json.dump(summary, f, indent=2, ensure_ascii=False, sort_keys=True)
     
     print(f"\nNotion backup completed!")
     print(f"  - Pages backed up: {len(results)}/{len(pages)}")

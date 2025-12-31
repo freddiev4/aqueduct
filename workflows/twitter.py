@@ -95,13 +95,14 @@ def download_user_tweets(
     access_token: Optional[str] = None,
     access_token_secret: Optional[str] = None,
     username: Optional[str] = None,
+    snapshot_date: Optional[datetime] = None,
     local_backup_dir: Path = Path("./backups/local"),
     max_tweets: Optional[int] = None,
     include_replies: bool = False,
 ) -> dict:
     """
-    Download all tweets from the authenticated user's profile.
-    
+    Download all tweets from the authenticated user's profile up to a snapshot date.
+
     Args:
         bearer_token: Twitter Bearer Token (for OAuth 2.0)
         api_key: Twitter API Key (for OAuth 1.0a)
@@ -109,10 +110,11 @@ def download_user_tweets(
         access_token: Twitter Access Token (for OAuth 1.0a)
         access_token_secret: Twitter Access Token Secret (for OAuth 1.0a)
         username: Twitter username (optional, will use authenticated user if not provided)
+        snapshot_date: Only download tweets created before or on this date (UTC)
         local_backup_dir: Base directory for backups
         max_tweets: Maximum number of tweets to download (None for all)
         include_replies: Whether to include replies in the download
-    
+
     Returns:
         Dictionary with download statistics
     """
@@ -173,6 +175,7 @@ def download_user_tweets(
         expansions=expansions,
         media_fields=media_fields,
         exclude=exclude_list,
+        end_time=snapshot_date,
     )
     
     for page in paginator:
@@ -305,7 +308,7 @@ def download_user_tweets(
                 # Save individual tweet JSON
                 tweet_file = backup_path / f"{tweet.id}.json"
                 with open(tweet_file, "w") as f:
-                    json.dump(tweet_data, f, indent=2)
+                    json.dump(tweet_data, f, indent=2, sort_keys=True)
                 
                 downloaded_tweets.append({
                     "id": tweet.id,
@@ -329,9 +332,9 @@ def download_user_tweets(
             "username": username,
             "user_id": user_id,
             "total_tweets_downloaded": tweet_count,
-            "download_date": datetime.now(timezone.utc).isoformat(),
+            "snapshot_date": snapshot_date.isoformat(),
             "tweets": downloaded_tweets,
-        }, f, indent=2)
+        }, f, indent=2, sort_keys=True)
     
     print(f"Downloaded {tweet_count} tweets to {backup_path}")
     
@@ -351,12 +354,13 @@ def download_bookmarks(
     access_token: Optional[str] = None,
     access_token_secret: Optional[str] = None,
     username: Optional[str] = None,
+    snapshot_date: Optional[datetime] = None,
     local_backup_dir: Path = Path("./backups/local"),
     max_bookmarks: Optional[int] = None,
 ) -> dict:
     """
-    Download all bookmarked tweets from the authenticated user's profile.
-    
+    Download all bookmarked tweets from the authenticated user's profile up to a snapshot date.
+
     Args:
         bearer_token: Twitter Bearer Token (for OAuth 2.0)
         api_key: Twitter API Key (for OAuth 1.0a)
@@ -364,9 +368,10 @@ def download_bookmarks(
         access_token: Twitter Access Token (for OAuth 1.0a)
         access_token_secret: Twitter Access Token Secret (for OAuth 1.0a)
         username: Twitter username (optional, will use authenticated user if not provided)
+        snapshot_date: Only download tweets created before or on this date (UTC)
         local_backup_dir: Base directory for backups
         max_bookmarks: Maximum number of bookmarks to download (None for all)
-    
+
     Returns:
         Dictionary with download statistics
     """
@@ -424,6 +429,7 @@ def download_bookmarks(
         tweet_fields=tweet_fields,
         expansions=expansions,
         media_fields=media_fields,
+        end_time=snapshot_date,
     )
     
     for page in paginator:
@@ -550,7 +556,7 @@ def download_bookmarks(
                 # Save individual bookmark JSON
                 bookmark_file = backup_path / f"{tweet.id}.json"
                 with open(bookmark_file, "w") as f:
-                    json.dump(tweet_data, f, indent=2)
+                    json.dump(tweet_data, f, indent=2, sort_keys=True)
                 
                 downloaded_bookmarks.append({
                     "id": tweet.id,
@@ -574,9 +580,9 @@ def download_bookmarks(
             "username": username,
             "user_id": user_id,
             "total_bookmarks_downloaded": bookmark_count,
-            "download_date": datetime.now(timezone.utc).isoformat(),
+            "snapshot_date": snapshot_date.isoformat(),
             "bookmarks": downloaded_bookmarks,
-        }, f, indent=2)
+        }, f, indent=2, sort_keys=True)
     
     print(f"Downloaded {bookmark_count} bookmarks to {backup_path}")
     
@@ -596,12 +602,13 @@ def download_likes(
     access_token: Optional[str] = None,
     access_token_secret: Optional[str] = None,
     username: Optional[str] = None,
+    snapshot_date: Optional[datetime] = None,
     local_backup_dir: Path = Path("./backups/local"),
     max_likes: Optional[int] = None,
 ) -> dict:
     """
-    Download all liked tweets from the authenticated user's profile.
-    
+    Download all liked tweets from the authenticated user's profile up to a snapshot date.
+
     Args:
         bearer_token: Twitter Bearer Token (for OAuth 2.0)
         api_key: Twitter API Key (for OAuth 1.0a)
@@ -609,9 +616,10 @@ def download_likes(
         access_token: Twitter Access Token (for OAuth 1.0a)
         access_token_secret: Twitter Access Token Secret (for OAuth 1.0a)
         username: Twitter username (optional, will use authenticated user if not provided)
+        snapshot_date: Only download tweets created before or on this date (UTC)
         local_backup_dir: Base directory for backups
         max_likes: Maximum number of likes to download (None for all)
-    
+
     Returns:
         Dictionary with download statistics
     """
@@ -670,6 +678,7 @@ def download_likes(
         tweet_fields=tweet_fields,
         expansions=expansions,
         media_fields=media_fields,
+        end_time=snapshot_date,
     )
     
     for page in paginator:
@@ -796,7 +805,7 @@ def download_likes(
                 # Save individual like JSON
                 like_file = backup_path / f"{tweet.id}.json"
                 with open(like_file, "w") as f:
-                    json.dump(tweet_data, f, indent=2)
+                    json.dump(tweet_data, f, indent=2, sort_keys=True)
                 
                 downloaded_likes.append({
                     "id": tweet.id,
@@ -820,9 +829,9 @@ def download_likes(
             "username": username,
             "user_id": user_id,
             "total_likes_downloaded": like_count,
-            "download_date": datetime.now(timezone.utc).isoformat(),
+            "snapshot_date": snapshot_date.isoformat(),
             "likes": downloaded_likes,
-        }, f, indent=2)
+        }, f, indent=2, sort_keys=True)
     
     print(f"Downloaded {like_count} likes to {backup_path}")
     
@@ -842,6 +851,7 @@ def backup_twitter(
     access_token: Optional[str] = None,
     access_token_secret: Optional[str] = None,
     username: Optional[str] = None,
+    snapshot_date: Optional[datetime] = None,
     download_tweets: bool = True,
     download_bookmarks: bool = True,
     download_likes: bool = True,
@@ -851,8 +861,8 @@ def backup_twitter(
     local_backup_dir: Path = Path("./backups/local"),
 ):
     """
-    Main flow to backup Twitter/X posts, bookmarks, and likes.
-    
+    Main flow to backup Twitter/X posts, bookmarks, and likes up to a snapshot date.
+
     Args:
         bearer_token: Twitter Bearer Token (for OAuth 2.0)
         api_key: Twitter API Key (for OAuth 1.0a)
@@ -860,6 +870,7 @@ def backup_twitter(
         access_token: Twitter Access Token (for OAuth 1.0a)
         access_token_secret: Twitter Access Token Secret (for OAuth 1.0a)
         username: Twitter username (optional, will use authenticated user if not provided)
+        snapshot_date: Only download tweets created before or on this date (UTC). Defaults to current time.
         download_tweets: Whether to download user's own tweets
         download_bookmarks: Whether to download bookmarked tweets
         download_likes: Whether to download liked tweets
@@ -868,6 +879,15 @@ def backup_twitter(
         max_likes: Maximum number of likes to download (None for all)
         local_backup_dir: Base directory for backups
     """
+    # Default to current UTC time if no snapshot_date provided
+    if snapshot_date is None:
+        snapshot_date = datetime.now(timezone.utc)
+    # Ensure snapshot_date is timezone-aware UTC
+    elif snapshot_date.tzinfo is None:
+        snapshot_date = snapshot_date.replace(tzinfo=timezone.utc)
+    elif snapshot_date.tzinfo != timezone.utc:
+        snapshot_date = snapshot_date.astimezone(timezone.utc)
+
     results = {}
     
     if download_tweets:
@@ -879,6 +899,7 @@ def backup_twitter(
             access_token=access_token,
             access_token_secret=access_token_secret,
             username=username,
+            snapshot_date=snapshot_date,
             local_backup_dir=local_backup_dir,
             max_tweets=max_tweets,
         )
@@ -893,6 +914,7 @@ def backup_twitter(
             access_token=access_token,
             access_token_secret=access_token_secret,
             username=username,
+            snapshot_date=snapshot_date,
             local_backup_dir=local_backup_dir,
             max_bookmarks=max_bookmarks,
         )
@@ -907,6 +929,7 @@ def backup_twitter(
             access_token=access_token,
             access_token_secret=access_token_secret,
             username=username,
+            snapshot_date=snapshot_date,
             local_backup_dir=local_backup_dir,
             max_likes=max_likes,
         )
