@@ -9,10 +9,15 @@ from pathlib import Path
 
 from prefect import flow, task
 from prefect.cache_policies import NO_CACHE
+from prefect.logging import get_run_logger
 
-from prefect_github import GitHubCredentials
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from blocks.github_block import GitHubBlock
 from prefect_github.repository_owner import query_repository_owner_repositories
 from prefect_github.repository import query_repository
+from prefect_github import GitHubCredentials
 
 
 @task(cache_policy=NO_CACHE)
@@ -24,6 +29,8 @@ def get_all_repositories(
     Get all repositories for a given owner with necessary fields for cloning.
     Returns repositories sorted by name for deterministic ordering.
     """
+    logger = get_run_logger()
+
     # Query repositories - specify fields we want on each repository node
     # The library will automatically include nodes when we specify return_fields
     # Note: We don't include "owner" because it causes issues with nested repository queries
@@ -51,12 +58,12 @@ def get_all_repositories(
             # Check if it's a 502 or other transient error
             if "502" in error_msg or "Bad Gateway" in error_msg:
                 if attempt < max_retries - 1:
-                    print(f"GitHub API returned 502 error, retrying in {retry_delay} seconds (attempt {attempt + 1}/{max_retries})...")
+                    logger.warning(f"GitHub API returned 502 error, retrying in {retry_delay} seconds (attempt {attempt + 1}/{max_retries})...")
                     time.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
                     continue
                 else:
-                    print(f"GitHub API error after {max_retries} attempts: {error_msg}")
+                    logger.error(f"GitHub API error after {max_retries} attempts: {error_msg}")
                     raise
             else:
                 # Not a transient error, re-raise immediately
@@ -93,8 +100,8 @@ def get_all_repositories(
     # Sort repositories by name for deterministic ordering
     repo_list.sort(key=lambda r: r["name"])
 
-    print(f"Found {len(repo_list)} repositories for {owner}")
-    print(f"Repositories: {[repo['name'] for repo in repo_list]}")
+    logger.info(f"Found {len(repo_list)} repositories for {owner}")
+    logger.info(f"Repositories: {[repo['name'] for repo in repo_list]}")
 
     return repo_list
 
@@ -203,7 +210,8 @@ def get_repository_commits(
 
     except Exception as e:
         # Log error and return empty list
-        print(f"Error fetching commits for {owner}/{repo_name}: {e}")
+        logger = get_run_logger()
+        logger.error(f"Error fetching commits for {owner}/{repo_name}: {e}")
         return []
 
 
@@ -220,6 +228,7 @@ def clone_repository_to_local(
     Organizes repos into subdirectories: forks/, private/, or public/
     Note: Removes --depth 1 to enable commit history queries.
     """
+    logger = get_run_logger()
     local_backup_dir.mkdir(parents=True, exist_ok=True)
 
     # Determine category: forks take priority, then private/public
@@ -244,7 +253,7 @@ def clone_repository_to_local(
 
     # Check if this snapshot already exists (idempotency)
     if repo_path.exists():
-        print(f"Repository {repo_info['name']} already backed up for snapshot {snapshot_str}, skipping clone...")
+        logger.info(f"Repository {repo_info['name']} already backed up for snapshot {snapshot_str}, skipping clone...")
         return repo_path
 
     # Create parent directories
@@ -267,9 +276,9 @@ def clone_repository_to_local(
             capture_output=True,
             text=True
         )
-        print(f"Successfully cloned {repo_info['name']} to {repo_path}")
+        logger.info(f"Successfully cloned {repo_info['name']} to {repo_path}")
     except subprocess.CalledProcessError as e:
-        print(f"Error cloning {repo_info['name']}: {e.stderr}")
+        logger.error(f"Error cloning {repo_info['name']}: {e.stderr}")
         raise
 
     return repo_path
@@ -328,10 +337,11 @@ def get_commits_from_local_repo(
 
     except subprocess.CalledProcessError as e:
         # Provide detailed error information for git failures
+        logger = get_run_logger()
         error_msg = f"git log failed with exit code {e.returncode}"
         if e.stderr:
             error_msg += f": {e.stderr.strip()}"
-        print(f"Error getting commits from {repo_path}: {error_msg}")
+        logger.error(f"Error getting commits from {repo_path}: {error_msg}")
         raise RuntimeError(error_msg) from e
 
 
@@ -371,12 +381,13 @@ def check_snapshot_exists(
     Check if a snapshot already exists for the given date.
     Returns True if both the snapshot directory and manifest exist.
     """
+    logger = get_run_logger()
     snapshot_str = snapshot_date.strftime("%Y-%m-%d")
     snapshot_dir = local_backup_dir / "github" / owner / "repositories" / snapshot_str
     manifest_path = local_backup_dir / "github" / owner / "repositories" / f"backup_manifest_{snapshot_str}.json"
 
     if snapshot_dir.exists() and manifest_path.exists():
-        print(f"Snapshot for {snapshot_str} already exists at {snapshot_dir}")
+        logger.info(f"Snapshot for {snapshot_str} already exists at {snapshot_dir}")
         return True
     return False
 
@@ -452,7 +463,7 @@ def process_repository(
 def backup_github_repositories(
     owner: str,
     until_date: datetime,
-    credentials_block_name: str = "github-freddiev4",
+    credentials_block_name: str = "github-credentials",
 ):
     """
     Main flow to backup all GitHub repositories for a given owner.
@@ -467,6 +478,8 @@ def backup_github_repositories(
     """
     import sys
 
+    logger = get_run_logger()
+
     # Track workflow start time
     workflow_start = time.time()
 
@@ -474,21 +487,22 @@ def backup_github_repositories(
     if until_date.tzinfo is None:
         until_date = until_date.replace(tzinfo=timezone.utc)
 
-    print(f"Starting GitHub backup for {owner} (snapshot date: {until_date.isoformat()})")
+    logger.info(f"Starting GitHub backup for {owner} (snapshot date: {until_date.isoformat()})")
 
     # Check if snapshot already exists (idempotency)
     if check_snapshot_exists(owner, until_date):
-        print(f"Snapshot already exists and is complete. Skipping backup.")
+        logger.info(f"Snapshot already exists and is complete. Skipping backup.")
         # Optionally load and return existing manifest here
         return []
 
-    # Load credentials once in the flow
-    github_credentials = GitHubCredentials.load(credentials_block_name)
+    # Load credentials from custom block and convert to GitHubCredentials
+    github_block = GitHubBlock.load(credentials_block_name)
+    github_credentials = GitHubCredentials(token=github_block.token)
 
     # Get all repositories for the owner (sorted for deterministic ordering)
     repositories = get_all_repositories(owner, github_credentials)
 
-    print(f"Found {len(repositories)} repositories for {owner}")
+    logger.info(f"Found {len(repositories)} repositories for {owner}")
 
     # Process each repository - Prefect will automatically parallelize these tasks
     results = []
@@ -505,7 +519,7 @@ def backup_github_repositories(
         except Exception as e:
             # Log error and continue with other repos
             repo_name = repo_info.get("name", "unknown")
-            print(f"ERROR: Failed to process repository {repo_name}: {str(e)}")
+            logger.error(f"Failed to process repository {repo_name}: {str(e)}")
 
             # Save error information to backup directory
             error_info = {
@@ -543,7 +557,7 @@ def backup_github_repositories(
             with open(error_file, "w") as f:
                 json.dump(error_info, f, indent=2)
 
-            print(f"Error details saved to {error_file}")
+            logger.warning(f"Error details saved to {error_file}")
             failed_repos.append(error_info)
 
     # Save backup manifest with enhanced metadata
@@ -575,10 +589,10 @@ def backup_github_repositories(
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2, sort_keys=True)
 
-    print(f"Successfully backed up {len(results)} repositories")
+    logger.info(f"Successfully backed up {len(results)} repositories")
     if failed_repos:
-        print(f"Failed to backup {len(failed_repos)} repositories (see ERROR.json files for details)")
-    print(f"Manifest saved to {manifest_path}")
+        logger.warning(f"Failed to backup {len(failed_repos)} repositories (see ERROR.json files for details)")
+    logger.info(f"Manifest saved to {manifest_path}")
 
     return results
 
