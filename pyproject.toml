@@ -6,6 +6,7 @@ dependencies = [
     "graphviz>=0.21",
     "instaloader>=4.10",
     "notion-client>=2.2.1",
+    "pdbpp>=0.11.7",
     "prefect[github]>=3.5.0",
     "python-dotenv>=1.2.1",
     "requests>=2.31.0",
