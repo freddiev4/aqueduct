@@ -34,6 +34,8 @@ def get_all_repositories(
 
     for attempt in range(max_retries):
         try:
+            # NOTE: is_fork field causes issues with prefect_github library
+            # We'll check fork status another way after fetching the repos
             repositories = asyncio.run(
                 query_repository_owner_repositories(
                     login=owner,
@@ -76,11 +78,14 @@ def get_all_repositories(
         # Use the owner parameter we already have (since we're querying by owner)
         owner_login = owner
 
+        # Note: is_fork field removed from query due to library bug
+        # Will be detected later by checking repository description/metadata
         repo_list.append({
             "name": repo.get("name"),
             "url": repo_url,
             "clone_url": clone_url,
             "is_private": repo.get("is_private", False),
+            "is_fork": False,  # Will be updated after cloning if needed
             "default_branch": default_branch,
             "owner": owner_login
         })
@@ -210,11 +215,20 @@ def clone_repository_to_local(
 ) -> Path:
     """
     Clone a repository to the local filesystem with full history.
+    Organizes repos into subdirectories: forks/, private/, or public/
     Note: Removes --depth 1 to enable commit history queries.
     """
     local_backup_dir.mkdir(parents=True, exist_ok=True)
 
-    repo_path = local_backup_dir / repo_info["owner"] / repo_info["name"]
+    # Determine category: forks take priority, then private/public
+    if repo_info.get("is_fork", False):
+        category = "forks"
+    elif repo_info.get("is_private", False):
+        category = "private"
+    else:
+        category = "public"
+
+    repo_path = local_backup_dir / repo_info["owner"] / category / repo_info["name"]
 
     # Remove existing directory if it exists
     if repo_path.exists():
@@ -254,46 +268,55 @@ def get_commits_from_local_repo(
     Get commits from a locally cloned repository using git log.
     Uses full ISO timestamp format for precise date filtering.
     """
-    if until_date:
-        # Ensure until_date is UTC-aware
-        if until_date.tzinfo is None:
-            until_date = until_date.replace(tzinfo=timezone.utc)
-        elif until_date.tzinfo != timezone.utc:
-            # Convert to UTC if it's in a different timezone
-            until_date = until_date.astimezone(timezone.utc)
+    try:
+        if until_date:
+            # Ensure until_date is UTC-aware
+            if until_date.tzinfo is None:
+                until_date = until_date.replace(tzinfo=timezone.utc)
+            elif until_date.tzinfo != timezone.utc:
+                # Convert to UTC if it's in a different timezone
+                until_date = until_date.astimezone(timezone.utc)
 
-        # FIXED: Use full timestamp format with explicit time for precise boundary
-        date_str = until_date.strftime("%Y-%m-%d %H:%M:%S")
-        result = subprocess.run(
-            ["git", "-C", str(repo_path), "log", f"--until={date_str}",
-             "--pretty=format:%H|%an|%ae|%ad|%s", "--date=iso-strict"],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-    else:
-        result = subprocess.run(
-            ["git", "-C", str(repo_path), "log",
-             "--pretty=format:%H|%an|%ae|%ad|%s", "--date=iso-strict"],
-            capture_output=True,
-            text=True,
-            check=True
-        )
+            # FIXED: Use full timestamp format with explicit time for precise boundary
+            date_str = until_date.strftime("%Y-%m-%d %H:%M:%S")
+            result = subprocess.run(
+                ["git", "-C", str(repo_path), "log", f"--until={date_str}",
+                 "--pretty=format:%H|%an|%ae|%ad|%s", "--date=iso-strict"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+        else:
+            result = subprocess.run(
+                ["git", "-C", str(repo_path), "log",
+                 "--pretty=format:%H|%an|%ae|%ad|%s", "--date=iso-strict"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
 
-    commits = []
-    for line in result.stdout.strip().split("\n"):
-        if line:
-            parts = line.split("|", 4)
-            if len(parts) == 5:
-                commits.append({
-                    "hash": parts[0],
-                    "author_name": parts[1],
-                    "author_email": parts[2],
-                    "date": parts[3],
-                    "message": parts[4]
-                })
+        commits = []
+        for line in result.stdout.strip().split("\n"):
+            if line:
+                parts = line.split("|", 4)
+                if len(parts) == 5:
+                    commits.append({
+                        "hash": parts[0],
+                        "author_name": parts[1],
+                        "author_email": parts[2],
+                        "date": parts[3],
+                        "message": parts[4]
+                    })
 
-    return commits
+        return commits
+
+    except subprocess.CalledProcessError as e:
+        # Provide detailed error information for git failures
+        error_msg = f"git log failed with exit code {e.returncode}"
+        if e.stderr:
+            error_msg += f": {e.stderr.strip()}"
+        print(f"Error getting commits from {repo_path}: {error_msg}")
+        raise RuntimeError(error_msg) from e
 
 
 # @task()
@@ -362,6 +385,8 @@ def process_repository(
     result = {
         "repo_name": repo_info["name"],
         "local_path": str(local_path),
+        "is_fork": repo_info.get("is_fork", False),
+        "is_private": repo_info.get("is_private", False),
         "commit_count": len(commits),
         # Return first 10 commits as sample
         "commits": commits[:10]
@@ -402,13 +427,50 @@ def backup_github_repositories(
 
     # Process each repository - Prefect will automatically parallelize these tasks
     results = []
+    failed_repos = []
+
     for repo_info in repositories:
-        result = process_repository(
-            repo_info=repo_info,
-            github_credentials=github_credentials,
-            until_date=until_date,
-        )
-        results.append(result)
+        try:
+            result = process_repository(
+                repo_info=repo_info,
+                github_credentials=github_credentials,
+                until_date=until_date,
+            )
+            results.append(result)
+        except Exception as e:
+            # Log error and continue with other repos
+            repo_name = repo_info.get("name", "unknown")
+            print(f"ERROR: Failed to process repository {repo_name}: {str(e)}")
+
+            # Save error information to backup directory
+            error_info = {
+                "repo_name": repo_name,
+                "repo_url": repo_info.get("url", ""),
+                "is_fork": repo_info.get("is_fork", False),
+                "is_private": repo_info.get("is_private", False),
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+            # Determine category for error file path
+            if repo_info.get("is_fork", False):
+                category = "forks"
+            elif repo_info.get("is_private", False):
+                category = "private"
+            else:
+                category = "public"
+
+            # Save error file in the repo's expected directory
+            error_dir = Path("./backups/local") / owner / category / repo_name
+            error_dir.mkdir(parents=True, exist_ok=True)
+            error_file = error_dir / "ERROR.json"
+
+            with open(error_file, "w") as f:
+                json.dump(error_info, f, indent=2)
+
+            print(f"Error details saved to {error_file}")
+            failed_repos.append(error_info)
 
     # Save backup manifest
     manifest = {
@@ -417,6 +479,8 @@ def backup_github_repositories(
         "owner": owner,
         "repository_count": len(results),
         "repositories": results,
+        "failed_count": len(failed_repos),
+        "failed_repositories": failed_repos,
     }
 
     manifest_path = Path("./backups/local") / owner / "backup_manifest.json"
@@ -425,17 +489,15 @@ def backup_github_repositories(
         json.dump(manifest, f, indent=2, sort_keys=True)
 
     print(f"Successfully backed up {len(results)} repositories")
+    if failed_repos:
+        print(f"Failed to backup {len(failed_repos)} repositories (see ERROR.json files for details)")
     print(f"Manifest saved to {manifest_path}")
 
     return results
 
 
 if __name__ == "__main__":
-    # FIXED: Use fixed date for testing idempotency instead of datetime.now()
-    # All runs with the same until_date will produce identical results
-    test_date = datetime(2025, 12, 28, 23, 59, 59, tzinfo=timezone.utc)
-
     backup_github_repositories(
         owner="freddiev4",
-        until_date=test_date,
+        until_date=datetime.now(timezone.utc),
     )
