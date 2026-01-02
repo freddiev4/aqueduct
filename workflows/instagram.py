@@ -1,23 +1,22 @@
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import instaloader
+
 from prefect import flow, task
 from prefect.cache_policies import NO_CACHE
 
-try:
-    import instaloader
-except ImportError:
-    raise ImportError(
-        "instaloader is required. Install it with: uv pip install instaloader"
-    )
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from blocks.instagram_block import InstagramBlock
 
 
 @task(cache_policy=NO_CACHE)
 def download_user_posts(
-    username: str,
-    password: Optional[str],
+    instagram_credentials: InstagramBlock,
     snapshot_date: datetime,
     local_backup_dir: Path = Path("./backups/local"),
     max_posts: Optional[int] = None,
@@ -26,8 +25,7 @@ def download_user_posts(
     Download all posts from the authenticated user's profile up to a snapshot date.
 
     Args:
-        username: Instagram username
-        password: Instagram password (optional, will prompt if not provided)
+        instagram_credentials: InstagramBlock containing username and password
         snapshot_date: Only download posts created before or on this date (UTC)
         local_backup_dir: Base directory for backups
         max_posts: Maximum number of posts to download (None for all)
@@ -35,6 +33,9 @@ def download_user_posts(
     Returns:
         Dictionary with download statistics
     """
+    username = instagram_credentials.username
+    password = instagram_credentials.password
+
     loader = instaloader.Instaloader(
         download_videos=True,
         download_video_thumbnails=True,
@@ -152,8 +153,7 @@ def download_user_posts(
 
 @task(cache_policy=NO_CACHE)
 def download_saved_posts(
-    username: str,
-    password: Optional[str],
+    instagram_credentials: InstagramBlock,
     snapshot_date: datetime,
     local_backup_dir: Path = Path("./backups/local"),
     max_posts: Optional[int] = None,
@@ -162,8 +162,7 @@ def download_saved_posts(
     Download all saved/bookmarked posts from the authenticated user's profile up to a snapshot date.
 
     Args:
-        username: Instagram username
-        password: Instagram password (optional, will prompt if not provided)
+        instagram_credentials: InstagramBlock containing username and password
         snapshot_date: Only download posts created before or on this date (UTC)
         local_backup_dir: Base directory for backups
         max_posts: Maximum number of saved posts to download (None for all)
@@ -171,6 +170,9 @@ def download_saved_posts(
     Returns:
         Dictionary with download statistics
     """
+    username = instagram_credentials.username
+    password = instagram_credentials.password
+
     loader = instaloader.Instaloader(
         download_videos=True,
         download_video_thumbnails=True,
@@ -303,11 +305,11 @@ def download_saved_posts(
 
 @flow()
 def backup_instagram(
-    username: str,
-    password: Optional[str] = None,
+    instagram_credentials: Optional[InstagramBlock] = None,
+    block_name: str = "instagram-credentials",
     snapshot_date: Optional[datetime] = None,
     download_posts: bool = True,
-    download_saved_posts: bool = True,
+    download_saved_posts_flag: bool = True,
     max_posts: Optional[int] = None,
     max_saved_posts: Optional[int] = None,
     local_backup_dir: Path = Path("./backups/local"),
@@ -316,15 +318,20 @@ def backup_instagram(
     Main flow to backup Instagram posts and saved posts up to a snapshot date.
 
     Args:
-        username: Instagram username
-        password: Instagram password (optional, will use saved session if not provided)
+        instagram_credentials: InstagramBlock containing credentials (if None, will load from block_name)
+        block_name: Name of the InstagramBlock to load if instagram_credentials is not provided
         snapshot_date: Only download posts created before or on this date (UTC). Defaults to current time.
         download_posts: Whether to download user's own posts
-        download_saved_posts: Whether to download saved/bookmarked posts
+        download_saved_posts_flag: Whether to download saved/bookmarked posts
         max_posts: Maximum number of posts to download (None for all)
         max_saved_posts: Maximum number of saved posts to download (None for all)
         local_backup_dir: Base directory for backups
     """
+    # Load credentials from block if not provided
+    if instagram_credentials is None:
+        instagram_credentials = InstagramBlock.load(block_name)
+
+    username = instagram_credentials.username
     # Default to current UTC time if no snapshot_date provided
     if snapshot_date is None:
         snapshot_date = datetime.now(timezone.utc)
@@ -338,19 +345,17 @@ def backup_instagram(
     if download_posts:
         print(f"Backing up posts for {username}...")
         posts_result = download_user_posts(
-            username=username,
-            password=password,
+            instagram_credentials=instagram_credentials,
             snapshot_date=snapshot_date,
             local_backup_dir=local_backup_dir,
             max_posts=max_posts,
         )
         results["posts"] = posts_result
 
-    if download_saved_posts:
+    if download_saved_posts_flag:
         print(f"Backing up saved posts for {username}...")
         saved_posts_result = download_saved_posts(
-            username=username,
-            password=password,
+            instagram_credentials=instagram_credentials,
             snapshot_date=snapshot_date,
             local_backup_dir=local_backup_dir,
             max_posts=max_saved_posts,
@@ -365,12 +370,11 @@ def backup_instagram(
 
 
 if __name__ == "__main__":
-    # Example usage - you can modify these parameters
+    # Example usage - credentials will be loaded from the "instagram-credentials" block
     backup_instagram(
-        username="your_username",  # Replace with your Instagram username
-        password=None,  # Set to your password or None to use saved session
+        block_name="instagram-credentials",  # Name of the InstagramBlock to load
         download_posts=True,
-        download_saved_posts=True,
+        download_saved_posts_flag=True,
         max_posts=None,  # Set to a number to limit posts, or None for all
         max_saved_posts=None,  # Set to a number to limit saved posts, or None for all
     )

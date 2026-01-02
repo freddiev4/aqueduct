@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from blocks.github_block import GitHubBlock
+
 from prefect_github.repository_owner import query_repository_owner_repositories
 from prefect_github.repository import query_repository
 from prefect_github import GitHubCredentials
