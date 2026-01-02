@@ -211,10 +211,12 @@ def get_repository_commits(
 def clone_repository_to_local(
     repo_info: dict,
     github_credentials: GitHubCredentials,
+    snapshot_date: datetime,
     local_backup_dir: Path = Path("./backups/local")
 ) -> Path:
     """
     Clone a repository to the local filesystem with full history.
+    Uses timestamped directory structure for non-destructive backups.
     Organizes repos into subdirectories: forks/, private/, or public/
     Note: Removes --depth 1 to enable commit history queries.
     """
@@ -228,11 +230,25 @@ def clone_repository_to_local(
     else:
         category = "public"
 
-    repo_path = local_backup_dir / repo_info["owner"] / category / repo_info["name"]
+    # NEW: Timestamped directory structure with platform prefix
+    snapshot_str = snapshot_date.strftime("%Y-%m-%d")
+    repo_path = (
+        local_backup_dir
+        / "github"  # Platform prefix
+        / repo_info["owner"]
+        / "repositories"  # Content type
+        / snapshot_str  # Snapshot date
+        / category
+        / repo_info["name"]
+    )
 
-    # Remove existing directory if it exists
+    # Check if this snapshot already exists (idempotency)
     if repo_path.exists():
-        shutil.rmtree(repo_path)
+        print(f"Repository {repo_info['name']} already backed up for snapshot {snapshot_str}, skipping clone...")
+        return repo_path
+
+    # Create parent directories
+    repo_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Clone the repository
     clone_url = repo_info["clone_url"]
@@ -346,6 +362,26 @@ def get_commits_from_local_repo(
 
 
 @task()
+def check_snapshot_exists(
+    owner: str,
+    snapshot_date: datetime,
+    local_backup_dir: Path = Path("./backups/local")
+) -> bool:
+    """
+    Check if a snapshot already exists for the given date.
+    Returns True if both the snapshot directory and manifest exist.
+    """
+    snapshot_str = snapshot_date.strftime("%Y-%m-%d")
+    snapshot_dir = local_backup_dir / "github" / owner / "repositories" / snapshot_str
+    manifest_path = local_backup_dir / "github" / owner / "repositories" / f"backup_manifest_{snapshot_str}.json"
+
+    if snapshot_dir.exists() and manifest_path.exists():
+        print(f"Snapshot for {snapshot_str} already exists at {snapshot_dir}")
+        return True
+    return False
+
+
+@task()
 def process_repository(
     repo_info: dict,
     github_credentials: GitHubCredentials,
@@ -373,6 +409,7 @@ def process_repository(
     local_path = clone_repository_to_local(
         repo_info=repo_info,
         github_credentials=github_credentials,
+        snapshot_date=until_date,
         local_backup_dir=local_backup_dir,
     )
 
@@ -381,6 +418,23 @@ def process_repository(
         repo_path=local_path,
         until_date=until_date,
     )
+
+    # Save per-repository metadata
+    repo_metadata = {
+        "repo_name": repo_info["name"],
+        "repo_url": repo_info.get("url", ""),
+        "is_fork": repo_info.get("is_fork", False),
+        "is_private": repo_info.get("is_private", False),
+        "snapshot_date": until_date.isoformat(),
+        "backup_timestamp": datetime.now(timezone.utc).isoformat(),
+        "commit_count": len(commits),
+        "commits_sample": commits[:10],  # First 10 commits
+        "local_path": str(local_path),
+    }
+
+    metadata_file = local_path / "backup_metadata.json"
+    with open(metadata_file, "w") as f:
+        json.dump(repo_metadata, f, indent=2, sort_keys=True)
 
     result = {
         "repo_name": repo_info["name"],
@@ -411,11 +465,22 @@ def backup_github_repositories(
     Returns:
         List of repository backup results
     """
+    import sys
+
+    # Track workflow start time
+    workflow_start = time.time()
+
     # Ensure until_date is timezone-aware
     if until_date.tzinfo is None:
         until_date = until_date.replace(tzinfo=timezone.utc)
 
     print(f"Starting GitHub backup for {owner} (snapshot date: {until_date.isoformat()})")
+
+    # Check if snapshot already exists (idempotency)
+    if check_snapshot_exists(owner, until_date):
+        print(f"Snapshot already exists and is complete. Skipping backup.")
+        # Optionally load and return existing manifest here
+        return []
 
     # Load credentials once in the flow
     github_credentials = GitHubCredentials.load(credentials_block_name)
@@ -461,8 +526,17 @@ def backup_github_repositories(
             else:
                 category = "public"
 
-            # Save error file in the repo's expected directory
-            error_dir = Path("./backups/local") / owner / category / repo_name
+            # Save error file in the repo's expected directory (with timestamp)
+            snapshot_str = until_date.strftime("%Y-%m-%d")
+            error_dir = (
+                Path("./backups/local")
+                / "github"
+                / owner
+                / "repositories"
+                / snapshot_str
+                / category
+                / repo_name
+            )
             error_dir.mkdir(parents=True, exist_ok=True)
             error_file = error_dir / "ERROR.json"
 
@@ -472,18 +546,31 @@ def backup_github_repositories(
             print(f"Error details saved to {error_file}")
             failed_repos.append(error_info)
 
-    # Save backup manifest
+    # Save backup manifest with enhanced metadata
+    snapshot_str = until_date.strftime("%Y-%m-%d")
     manifest = {
         "backup_date": until_date.isoformat(),
+        "snapshot_date_str": snapshot_str,
         "execution_timestamp": datetime.now(timezone.utc).isoformat(),
+        "workflow_version": "2.0.0",
+        "python_version": sys.version,
         "owner": owner,
         "repository_count": len(results),
+        "total_commits": sum(r.get("commit_count", 0) for r in results),
+        "processing_duration_seconds": time.time() - workflow_start,
         "repositories": results,
         "failed_count": len(failed_repos),
         "failed_repositories": failed_repos,
     }
 
-    manifest_path = Path("./backups/local") / owner / "backup_manifest.json"
+    # Update manifest path to include timestamp
+    manifest_path = (
+        Path("./backups/local")
+        / "github"
+        / owner
+        / "repositories"
+        / f"backup_manifest_{snapshot_str}.json"
+    )
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2, sort_keys=True)
