@@ -28,6 +28,17 @@ docker run -p 4200:4200 --rm prefecthq/prefect:3-latest -- prefect server start 
 
 Access the Prefect UI at http://localhost:4200
 
+### Git Workflow
+
+**IMPORTANT**: After making any changes to the codebase, you MUST commit and push:
+
+1. Check git status: `git status`
+2. Review changes: `git diff`
+3. Stage and commit changes with a descriptive message
+4. Push to remote: `git push`
+
+Always commit and push after completing a logical unit of work (e.g., implementing a feature, fixing a bug, refactoring code).
+
 ## Architecture
 
 ### Workflow Structure
