@@ -39,6 +39,98 @@ detect_arch() {
     esac
 }
 
+# Detect Mac model year (returns year or "unknown")
+detect_mac_year() {
+    if [ "$(uname -s)" != "Darwin" ]; then
+        echo "unknown"
+        return
+    fi
+
+    # Try to get model year from system_profiler
+    local model_info=$(system_profiler SPHardwareDataType 2>/dev/null | grep "Model Name\|Model Identifier")
+
+    # Extract year from Model Identifier (e.g., "MacBookPro13,3" where 13 could indicate year)
+    # Or look for year in Model Name (e.g., "Mac mini (Late 2014)")
+    local year=$(echo "$model_info" | grep -oE '(Early|Late|Mid)?[[:space:]]?20[0-9]{2}' | grep -oE '20[0-9]{2}' | head -n1)
+
+    if [ -n "$year" ]; then
+        echo "$year"
+    else
+        # Fallback: try to estimate from Model Identifier
+        # This is less reliable but can work for some models
+        echo "unknown"
+    fi
+}
+
+# Install VirtualBox (for older Macs that need it for Docker)
+install_virtualbox() {
+    local arch=$1
+    local version="7.2.4"
+    local build="170995"
+
+    info "Installing VirtualBox ${version} for macOS..."
+
+    # Check if VirtualBox is already installed
+    if [ -d "/Applications/VirtualBox.app" ]; then
+        warn "VirtualBox is already installed"
+        read -p "Do you want to reinstall? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            info "Skipping VirtualBox installation"
+            return 0
+        fi
+    fi
+
+    # Determine download URL based on architecture
+    local vbox_url
+    if [ "$arch" = "arm64" ]; then
+        vbox_url="https://download.virtualbox.org/virtualbox/${version}/VirtualBox-${version}-${build}-macOSArm64.dmg"
+        info "Downloading VirtualBox for Apple Silicon..."
+    else
+        vbox_url="https://download.virtualbox.org/virtualbox/${version}/VirtualBox-${version}-${build}-OSX.dmg"
+        info "Downloading VirtualBox for Intel..."
+    fi
+
+    # Download VirtualBox DMG
+    if ! curl -L -o /tmp/VirtualBox.dmg "$vbox_url"; then
+        error "Failed to download VirtualBox"
+        return 1
+    fi
+
+    # Mount the DMG
+    info "Mounting VirtualBox.dmg..."
+    if ! sudo hdiutil attach /tmp/VirtualBox.dmg; then
+        error "Failed to mount VirtualBox.dmg"
+        rm -f /tmp/VirtualBox.dmg
+        return 1
+    fi
+
+    # Install VirtualBox (the DMG contains a .pkg file)
+    info "Installing VirtualBox (this may take a moment)..."
+    local vbox_pkg=$(find /Volumes/VirtualBox -name "*.pkg" | head -n1)
+    if [ -n "$vbox_pkg" ]; then
+        if ! sudo installer -pkg "$vbox_pkg" -target /; then
+            error "VirtualBox installation failed"
+            sudo hdiutil detach /Volumes/VirtualBox 2>/dev/null
+            rm -f /tmp/VirtualBox.dmg
+            return 1
+        fi
+    else
+        error "Could not find VirtualBox installer package"
+        sudo hdiutil detach /Volumes/VirtualBox 2>/dev/null
+        rm -f /tmp/VirtualBox.dmg
+        return 1
+    fi
+
+    # Unmount and clean up
+    info "Cleaning up..."
+    sudo hdiutil detach /Volumes/VirtualBox
+    rm -f /tmp/VirtualBox.dmg
+
+    info "✓ VirtualBox installed successfully"
+    warn "You may need to approve VirtualBox kernel extensions in System Preferences > Security & Privacy"
+}
+
 # Install kind
 install_kind() {
     local os=$1
@@ -205,6 +297,23 @@ install_docker() {
     fi
 
     if [ "$os" = "darwin" ]; then
+        # macOS - Check if we need VirtualBox for older Macs
+        local mac_year=$(detect_mac_year)
+        info "Detected Mac year: ${mac_year}"
+
+        # For Macs pre-2016, Docker Desktop may not work well - install VirtualBox
+        if [ "$mac_year" != "unknown" ] && [ "$mac_year" -lt 2016 ]; then
+            warn "Detected Mac from ${mac_year} (pre-2016)"
+            warn "Modern Docker Desktop requires macOS 11+ which may not be available on older Macs"
+            warn "Installing VirtualBox first (required for Docker Toolbox on older systems)"
+            echo
+            install_virtualbox "$arch" || warn "VirtualBox installation failed"
+            echo
+            warn "Note: You may need to use Docker Toolbox instead of Docker Desktop on this Mac"
+            warn "Docker Desktop installation will continue but may not work on older macOS versions"
+            echo
+        fi
+
         # macOS - Install Docker Desktop
         info "Installing Docker Desktop for macOS..."
 
@@ -302,10 +411,16 @@ write_version_report() {
     info "Writing version report to ${report_file}..."
 
     # Collect version information
+    local virtualbox_version="not installed"
     local docker_version="not installed"
     local kind_version="not installed"
     local argocd_version="not installed"
     local claude_version="not installed"
+
+    # Check for VirtualBox (macOS only)
+    if [ "$os" = "darwin" ] && [ -d "/Applications/VirtualBox.app" ]; then
+        virtualbox_version=$(VBoxManage --version 2>/dev/null || echo "installed (version unknown)")
+    fi
 
     if command -v docker &> /dev/null; then
         docker_version=$(docker --version 2>/dev/null | sed 's/Docker version //' | cut -d',' -f1 || echo "installed (version unknown)")
@@ -327,6 +442,10 @@ write_version_report() {
     local hostname=$(hostname)
     local kernel=$(uname -r)
     local full_os=$(uname -s)
+    local mac_year="n/a"
+    if [ "$os" = "darwin" ]; then
+        mac_year=$(detect_mac_year)
+    fi
 
     # Create JSON report
     cat > "$report_file" <<EOF
@@ -337,9 +456,11 @@ write_version_report() {
     "os": "${full_os}",
     "kernel": "${kernel}",
     "architecture": "${arch}",
-    "detected_os": "${os}"
+    "detected_os": "${os}",
+    "mac_year": "${mac_year}"
   },
   "tools": {
+    "virtualbox": "${virtualbox_version}",
     "docker": "${docker_version}",
     "kind": "${kind_version}",
     "argocd": "${argocd_version}",
@@ -400,6 +521,9 @@ main() {
     info "Bootstrap complete!"
     echo
     info "Installed tools:"
+    if [ -d "/Applications/VirtualBox.app" ]; then
+        echo "  - virtualbox: $(VBoxManage --version 2>/dev/null || echo 'installed')"
+    fi
     if command -v docker &> /dev/null; then
         echo "  - docker: $(docker --version 2>/dev/null)"
     fi

@@ -12,6 +12,7 @@ The script installs the following tools:
 
 | Tool | macOS | Linux | Purpose |
 |------|-------|-------|---------|
+| **VirtualBox** | ✓ (pre-2016 Macs) | - | VM hypervisor (for older Macs) |
 | **Docker** | Docker Desktop | Docker Engine | Container runtime |
 | **kind** | ✓ | ✓ | Kubernetes in Docker (local clusters) |
 | **ArgoCD CLI** | ✓ | ✓ | GitOps deployment tool |
@@ -49,6 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/your-username/aqueduct/main/infra/b
 ### Automatic Detection
 - Detects your OS (macOS/Linux) and architecture (AMD64/ARM64)
 - Downloads the correct binaries for your system
+- Detects Mac model year (for pre-2016 compatibility checks)
 
 ### Smart Installation
 - Checks if tools are already installed
@@ -60,6 +62,13 @@ curl -fsSL https://raw.githubusercontent.com/your-username/aqueduct/main/infra/b
 - **macOS**: Installs Docker Desktop with GUI
 - **Linux**: Installs Docker Engine (lightweight, no GUI required)
 - Automatically adds Linux users to the `docker` group
+
+### VirtualBox Installation (Pre-2016 Macs)
+The script automatically detects Mac model year:
+- **Pre-2016 Macs**: Installs VirtualBox first (required for Docker Toolbox on older systems)
+- **2016+ Macs**: Skips VirtualBox (Docker Desktop uses native macOS virtualization)
+
+**Note**: Macs older than 2016 may not support modern Docker Desktop (requires macOS 11+). On these systems, you may need to use Docker Toolbox instead.
 
 ### Version Report
 After installation completes, the script generates a JSON report:
@@ -77,10 +86,34 @@ Example output:
     "os": "Linux",
     "kernel": "5.15.0-generic",
     "architecture": "amd64",
-    "detected_os": "linux"
+    "detected_os": "linux",
+    "mac_year": "n/a"
   },
   "tools": {
+    "virtualbox": "not installed",
     "docker": "25.0.0",
+    "kind": "0.31.0",
+    "argocd": "v2.9.3",
+    "claude": "1.2.3"
+  }
+}
+```
+
+For a pre-2016 Mac:
+```json
+{
+  "timestamp": "2026-01-08T15:30:45Z",
+  "hostname": "mac-mini",
+  "system": {
+    "os": "Darwin",
+    "kernel": "15.6.0",
+    "architecture": "amd64",
+    "detected_os": "darwin",
+    "mac_year": "2014"
+  },
+  "tools": {
+    "virtualbox": "7.2.4",
+    "docker": "not installed",
     "kind": "0.31.0",
     "argocd": "v2.9.3",
     "claude": "1.2.3"
@@ -131,10 +164,25 @@ source ~/.bashrc  # or ~/.zshrc for zsh
 ### Version Report Not Generated
 Ensure you have write permissions in the directory where you run the script.
 
+### VirtualBox Kernel Extensions (macOS)
+After installing VirtualBox on macOS, you may need to approve kernel extensions:
+1. Open **System Preferences** > **Security & Privacy**
+2. Click the lock icon and authenticate
+3. Click **Allow** next to the VirtualBox kernel extension message
+4. Restart your Mac if prompted
+
+### Old Mac Compatibility
+If you have a Mac older than 2016:
+- Modern Docker Desktop may not work (requires macOS 11+)
+- The script will install VirtualBox automatically
+- Consider using Docker Toolbox (deprecated but works on older systems)
+- Check Docker Toolbox documentation for setup instructions
+
 ## Supported Platforms
 
 ### macOS
-- macOS 11 (Big Sur) or later
+- **Modern Macs** (2016+): macOS 11 (Big Sur) or later
+- **Older Macs** (pre-2016): Requires VirtualBox; Docker Desktop may not be compatible
 - Intel (x86_64) and Apple Silicon (ARM64)
 
 ### Linux
@@ -155,6 +203,14 @@ Ensure you have write permissions in the directory where you run the script.
 ## Uninstallation
 
 To remove installed tools:
+
+**VirtualBox (macOS)**:
+```bash
+# Run the VirtualBox uninstaller
+sudo /Library/Application\ Support/VirtualBox/LaunchDaemons/VirtualBoxStartup.sh uninstall
+# Remove the application
+sudo rm -rf /Applications/VirtualBox.app
+```
 
 **Docker Desktop (macOS)**:
 ```bash
