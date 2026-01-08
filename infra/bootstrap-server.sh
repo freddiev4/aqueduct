@@ -185,6 +185,111 @@ install_argocd() {
     fi
 }
 
+# Install Docker
+install_docker() {
+    local os=$1
+    local arch=$2
+
+    info "Installing Docker for ${os}/${arch}..."
+
+    # Check if docker is already installed
+    if command -v docker &> /dev/null; then
+        local current_version=$(docker --version 2>/dev/null || echo "unknown")
+        warn "Docker is already installed (${current_version})"
+        read -p "Do you want to reinstall? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            info "Skipping Docker installation"
+            return 0
+        fi
+    fi
+
+    if [ "$os" = "darwin" ]; then
+        # macOS - Install Docker Desktop
+        info "Installing Docker Desktop for macOS..."
+
+        # Determine download URL based on architecture
+        local docker_url
+        if [ "$arch" = "arm64" ]; then
+            docker_url="https://desktop.docker.com/mac/main/arm64/Docker.dmg"
+            info "Downloading Docker Desktop for Apple Silicon..."
+        else
+            docker_url="https://desktop.docker.com/mac/main/amd64/Docker.dmg"
+            info "Downloading Docker Desktop for Intel..."
+        fi
+
+        # Download Docker.dmg
+        if ! curl -L -o /tmp/Docker.dmg "$docker_url"; then
+            error "Failed to download Docker Desktop"
+            return 1
+        fi
+
+        # Mount the DMG
+        info "Mounting Docker.dmg..."
+        if ! sudo hdiutil attach /tmp/Docker.dmg; then
+            error "Failed to mount Docker.dmg"
+            rm -f /tmp/Docker.dmg
+            return 1
+        fi
+
+        # Run the installer
+        info "Running Docker installer (this may take a moment)..."
+        if ! sudo /Volumes/Docker/Docker.app/Contents/MacOS/install --accept-license; then
+            error "Docker installation failed"
+            sudo hdiutil detach /Volumes/Docker 2>/dev/null
+            rm -f /tmp/Docker.dmg
+            return 1
+        fi
+
+        # Unmount and clean up
+        info "Cleaning up..."
+        sudo hdiutil detach /Volumes/Docker
+        rm -f /tmp/Docker.dmg
+
+        info "✓ Docker Desktop installed successfully to /Applications/Docker.app"
+        warn "You may need to start Docker Desktop manually from Applications"
+
+    elif [ "$os" = "linux" ]; then
+        # Linux - Install Docker Engine using convenience script
+        info "Installing Docker Engine for Linux using convenience script..."
+
+        # Download the convenience script
+        if ! curl -fsSL https://get.docker.com -o /tmp/get-docker.sh; then
+            error "Failed to download Docker installation script"
+            return 1
+        fi
+
+        # Run the installation script
+        info "Running Docker installation script (requires sudo)..."
+        if ! sudo sh /tmp/get-docker.sh; then
+            error "Docker installation failed"
+            rm -f /tmp/get-docker.sh
+            return 1
+        fi
+
+        # Clean up
+        rm -f /tmp/get-docker.sh
+
+        # Add current user to docker group if not root
+        if [ "$USER" != "root" ] && [ -n "$USER" ]; then
+            info "Adding user $USER to docker group..."
+            sudo usermod -aG docker "$USER"
+            warn "You'll need to log out and back in for docker group membership to take effect"
+        fi
+
+        # Verify installation
+        if command -v docker &> /dev/null; then
+            info "✓ Docker Engine installed successfully: $(docker --version)"
+        else
+            error "Docker installation completed but docker command not found"
+            return 1
+        fi
+    else
+        error "Docker installation not supported for OS: ${os}"
+        return 1
+    fi
+}
+
 # Write version report to JSON file
 write_version_report() {
     local os=$1
@@ -197,9 +302,14 @@ write_version_report() {
     info "Writing version report to ${report_file}..."
 
     # Collect version information
+    local docker_version="not installed"
     local kind_version="not installed"
     local argocd_version="not installed"
     local claude_version="not installed"
+
+    if command -v docker &> /dev/null; then
+        docker_version=$(docker --version 2>/dev/null | sed 's/Docker version //' | cut -d',' -f1 || echo "installed (version unknown)")
+    fi
 
     if command -v kind &> /dev/null; then
         kind_version=$(kind version 2>/dev/null | grep -oP 'kind v\K[0-9.]+' || echo "installed (version unknown)")
@@ -230,6 +340,7 @@ write_version_report() {
     "detected_os": "${os}"
   },
   "tools": {
+    "docker": "${docker_version}",
     "kind": "${kind_version}",
     "argocd": "${argocd_version}",
     "claude": "${claude_version}"
@@ -273,6 +384,9 @@ main() {
     info "Installing tools..."
     echo
 
+    install_docker "$OS" "$ARCH" || warn "Docker installation failed, continuing..."
+    echo
+
     install_kind "$OS" "$ARCH" || warn "kind installation failed, continuing..."
     echo
 
@@ -286,6 +400,9 @@ main() {
     info "Bootstrap complete!"
     echo
     info "Installed tools:"
+    if command -v docker &> /dev/null; then
+        echo "  - docker: $(docker --version 2>/dev/null)"
+    fi
     if command -v kind &> /dev/null; then
         echo "  - kind: $(kind version)"
     fi
