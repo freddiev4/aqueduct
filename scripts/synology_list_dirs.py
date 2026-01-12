@@ -14,6 +14,7 @@ def main():
 
     username = os.getenv('SYNOLOGY_USERNAME')
     password = os.getenv('SYNOLOGY_PASSWORD')
+    port = int(os.getenv('SYNOLOGY_PORT'))
 
     if not username or not password:
         print("Error: SYNOLOGY_USERNAME and SYNOLOGY_PASSWORD must be set in .env")
@@ -21,22 +22,27 @@ def main():
 
     # Connect to Synology FileStation
     # Note: You'll need to provide your Synology NAS IP address or hostname
-    synology_host = input("Enter your Synology NAS IP address or hostname (e.g., 192.168.1.100 or mynas.local): ")
+    synology_host = os.getenv('SYNOLOGY_IP_ADDR')
 
-    print(f"\nConnecting to {synology_host}...")
+    print(f"\nConnecting to {synology_host}:{port}...")
 
     try:
         # Create FileStation API instance
         fs = filestation.FileStation(
             ip_address=synology_host,
-            port=5000,  # Default HTTP port, change to 5001 for HTTPS
+            port=port,
             username=username,
             password=password,
-            secure=False,  # Set to True if using HTTPS
-            cert_verify=False,  # Set to True if you want to verify SSL certificates
-            dsm_version=7,  # Adjust based on your DSM version (6 or 7)
+            # Set to True if using HTTPS
+            secure=False,
+            # Set to True if you want to verify SSL certificates
+            cert_verify=False,
+            # Adjust based on your DSM version (6 or 7)
+            dsm_version=7,
+            # Set to True to enable debug logging
             debug=True,
-            otp_code=None
+            # Set to None if you don't want to use OTP code
+            otp_code=None,
         )
 
         print("Successfully connected to Synology NAS!")
