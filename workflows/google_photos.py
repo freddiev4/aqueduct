@@ -4,8 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from google_photos_library_api import GooglePhotosLibraryApi
-from google_photos_library_api.model import MediaItem
+from google_photos_library_api.api import GooglePhotosLibraryApi
 
 from prefect import flow, task
 from prefect.cache_policies import NO_CACHE
