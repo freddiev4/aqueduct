@@ -214,3 +214,6 @@ simple_auth_manager_passwords.json.generated
 **logs/*
 
 backups/
+
+# Google OAuth2 credentials
+credentials.json
