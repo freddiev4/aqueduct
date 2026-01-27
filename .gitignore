@@ -217,3 +217,10 @@ backups/
 
 # Google OAuth2 credentials
 credentials.json
+client_secret*.json
+token.json
+
+# Project docs (private)
+prd.md
+to-implement.txt
+instagram-get-session.txt
