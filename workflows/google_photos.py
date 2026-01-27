@@ -1,10 +1,14 @@
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from google_photos_library_api.api import GooglePhotosLibraryApi
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
 
 from prefect import flow, task
 from prefect.cache_policies import NO_CACHE
@@ -12,6 +16,55 @@ from prefect.cache_policies import NO_CACHE
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from blocks.google_photos_block import GooglePhotosBlock
+
+# Google Photos API scopes
+SCOPES = [
+    'https://www.googleapis.com/auth/photoslibrary.readonly',
+]
+
+# Workaround for oauthlib being strict about scope changes
+import os
+os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
+
+
+def get_authenticated_service(credentials_path: str):
+    """
+    Authenticate with Google Photos API using OAuth2.
+
+    Args:
+        credentials_path: Path to the OAuth2 credentials JSON file
+
+    Returns:
+        Authenticated Google Photos service object
+    """
+    creds = None
+    token_path = Path.home() / ".google-photos-tokens" / "token.json"
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Load existing token if available
+    if token_path.exists():
+        creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
+
+    # If there are no valid credentials, let the user log in
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            print("Refreshing expired token...")
+            creds.refresh(Request())
+        else:
+            print("Starting OAuth2 flow...")
+            print("A browser window will open for authorization...")
+            flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
+            # Use fixed port 8080 - must match redirect_uri in Google Cloud Console
+            creds = flow.run_local_server(port=8080, open_browser=True)
+
+        # Save the credentials for the next run
+        with open(token_path, 'w') as token:
+            token.write(creds.to_json())
+        print(f"Token saved to {token_path}")
+
+    # Build the service
+    service = build('photoslibrary', 'v1', credentials=creds, static_discovery=False)
+    return service
 
 
 @task(cache_policy=NO_CACHE)
@@ -35,11 +88,10 @@ def download_media_items(
     """
     credentials_path = google_photos_credentials.credentials_path
 
-    # Initialize the API client
-    api = GooglePhotosLibraryApi.from_credentials(credentials_path)
+    # Get authenticated service
+    service = get_authenticated_service(credentials_path)
 
-    # Get user profile to extract email/username
-    # The API doesn't provide a direct way to get username, so we'll use "user" as default
+    # Use a fixed username - getting user info requires additional scopes
     username = "user"
 
     # Create backup directory structure with snapshot date segmentation
@@ -71,41 +123,53 @@ def download_media_items(
     # Collect all media items and sort deterministically
     all_items = []
 
-    # List all media items
-    # The API returns items in reverse chronological order by default
+    # List all media items using the mediaItems.search endpoint
     page_token = None
     while True:
-        # Get a page of media items
-        media_items = api.media_items.list(page_size=100, page_token=page_token)
+        try:
+            # Search for media items
+            body = {
+                "pageSize": 100,
+            }
+            if page_token:
+                body["pageToken"] = page_token
 
-        for item in media_items.media_items:
-            # Parse creation time
-            creation_time_str = item.media_metadata.creation_time
-            creation_time = datetime.fromisoformat(creation_time_str.replace("Z", "+00:00"))
+            results = service.mediaItems().search(body=body).execute()
 
-            # Ensure UTC timezone
-            if creation_time.tzinfo is None:
-                creation_time = creation_time.replace(tzinfo=timezone.utc)
-            elif creation_time.tzinfo != timezone.utc:
-                creation_time = creation_time.astimezone(timezone.utc)
+            media_items = results.get('mediaItems', [])
 
-            # Apply temporal filtering - only include items up to snapshot_date
-            if creation_time > snapshot_date:
-                continue
+            for item in media_items:
+                # Parse creation time
+                creation_time_str = item['mediaMetadata']['creationTime']
+                creation_time = datetime.fromisoformat(creation_time_str.replace('Z', '+00:00'))
 
-            all_items.append({
-                "item": item,
-                "creation_time": creation_time,
-            })
+                # Ensure UTC timezone
+                if creation_time.tzinfo is None:
+                    creation_time = creation_time.replace(tzinfo=timezone.utc)
+                elif creation_time.tzinfo != timezone.utc:
+                    creation_time = creation_time.astimezone(timezone.utc)
 
-        # Check if there are more pages
-        page_token = media_items.next_page_token
-        if not page_token:
+                # Apply temporal filtering - only include items up to snapshot_date
+                if creation_time > snapshot_date:
+                    continue
+
+                all_items.append({
+                    "item": item,
+                    "creation_time": creation_time,
+                })
+
+            # Check if there are more pages
+            page_token = results.get('nextPageToken')
+            if not page_token:
+                break
+
+        except Exception as e:
+            print(f"Error fetching media items: {e}")
             break
 
     # Sort items by creation time and item ID (newest first) for deterministic ordering
     # Using composite key to handle timestamp collisions (e.g., burst mode photos)
-    all_items.sort(key=lambda x: (x["creation_time"], x["item"].id), reverse=True)
+    all_items.sort(key=lambda x: (x["creation_time"], x["item"]["id"]), reverse=True)
 
     # Download items
     for item_data in all_items:
@@ -118,10 +182,10 @@ def download_media_items(
         try:
             # Download the media file
             # Get the base URL and append download parameters
-            base_url = item.base_url
+            base_url = item['baseUrl']
 
             # Determine if it's a photo or video
-            mime_type = item.mime_type
+            mime_type = item['mimeType']
             is_video = mime_type.startswith("video/")
 
             # Get file extension from mime type
@@ -133,7 +197,7 @@ def download_media_items(
                 extension = mime_type.split("/")[-1]  # e.g., "jpeg" from "image/jpeg"
 
             # Create filename using item ID and extension
-            filename = f"{item.id}.{extension}"
+            filename = f"{item['id']}.{extension}"
             file_path = backup_path / filename
 
             # Download the file
@@ -145,44 +209,45 @@ def download_media_items(
                 f.write(response.content)
 
             # Save metadata for this item
+            media_metadata = item['mediaMetadata']
             metadata = {
-                "id": item.id,
-                "filename": item.filename,
+                "id": item['id'],
+                "filename": item.get('filename', filename),
                 "creation_time": creation_time.isoformat(),
                 "mime_type": mime_type,
                 "is_video": is_video,
-                "width": item.media_metadata.width,
-                "height": item.media_metadata.height,
-                "description": getattr(item, "description", ""),
+                "width": media_metadata.get('width'),
+                "height": media_metadata.get('height'),
+                "description": item.get("description", ""),
                 "local_path": str(file_path),
             }
 
             # Save photo-specific metadata
-            if hasattr(item.media_metadata, "photo") and item.media_metadata.photo:
-                photo_metadata = item.media_metadata.photo
-                metadata["camera_make"] = getattr(photo_metadata, "camera_make", "")
-                metadata["camera_model"] = getattr(photo_metadata, "camera_model", "")
-                metadata["focal_length"] = getattr(photo_metadata, "focal_length", 0.0)
-                metadata["aperture_f_number"] = getattr(photo_metadata, "aperture_f_number", 0.0)
-                metadata["iso_equivalent"] = getattr(photo_metadata, "iso_equivalent", 0)
+            if 'photo' in media_metadata:
+                photo_metadata = media_metadata['photo']
+                metadata["camera_make"] = photo_metadata.get("cameraMake", "")
+                metadata["camera_model"] = photo_metadata.get("cameraModel", "")
+                metadata["focal_length"] = photo_metadata.get("focalLength", 0.0)
+                metadata["aperture_f_number"] = photo_metadata.get("apertureFNumber", 0.0)
+                metadata["iso_equivalent"] = photo_metadata.get("isoEquivalent", 0)
 
             # Save video-specific metadata
-            if hasattr(item.media_metadata, "video") and item.media_metadata.video:
-                video_metadata = item.media_metadata.video
-                metadata["fps"] = getattr(video_metadata, "fps", 0.0)
-                metadata["status"] = getattr(video_metadata, "status", "")
+            if 'video' in media_metadata:
+                video_metadata = media_metadata['video']
+                metadata["fps"] = video_metadata.get("fps", 0.0)
+                metadata["status"] = video_metadata.get("status", "")
 
             # Save individual item metadata
-            item_metadata_file = backup_path / f"{item.id}.json"
+            item_metadata_file = backup_path / f"{item['id']}.json"
             with open(item_metadata_file, "w") as f:
                 json.dump(metadata, f, indent=2, sort_keys=True)
 
             downloaded_items.append(metadata)
             item_count += 1
-            print(f"Downloaded item {item_count}: {item.filename} ({mime_type})")
+            print(f"Downloaded item {item_count}: {item.get('filename', filename)} ({mime_type})")
 
         except Exception as e:
-            print(f"Error downloading item {item.id}: {e}")
+            print(f"Error downloading item {item['id']}: {e}")
             continue
 
     # Save summary metadata

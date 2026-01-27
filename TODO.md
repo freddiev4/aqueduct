@@ -1,93 +1,69 @@
-# Google Photos Workflow - TODO
+# Aqueduct TODO
 
-## Status: Ready for Testing
+This file tracks implementation status and planned work for the Aqueduct backup system.
+
+## Workflows Status
+
+### Implemented ✓
+- [x] **GitHub** (`workflows/github.py`) - Repository cloning, commit history
+- [x] **YouTube** (`workflows/youtube.py`) - Video downloads via yt-dlp
+- [x] **Crunchyroll** (`workflows/crunchyroll.py`) - Anime downloads via multi-downloader-nx
+- [x] **Google Photos** (`workflows/google_photos.py`) - Media library backup
+
+### Needs Fixing 🔧
+These workflows are in `workflows/to-fix/` and need updates:
+- [ ] **Twitter/X** (`workflows/to-fix/twitter.py`) - Tweets, bookmarks, likes with media
+- [ ] **Instagram** (`workflows/to-fix/instagram.py`) - User posts and saved posts
+- [ ] **Notion** (`workflows/to-fix/notion.py`) - Pages as markdown with media
+
+### Planned 🔄
+- [ ] **Google Drive** - File and folder backup
+  - Reference: https://developers.google.com/workspace/drive/api/quickstart/python
+- [ ] **Amazon Orders** - Order history backup
+  - Reference: https://github.com/alexdlaird/amazon-orders
+- [ ] **Reddit** - Saved posts, comments, upvoted content
+  - Reference: https://praw.readthedocs.io/en/stable/
+
+## Current Work in Progress
+
+### Google Photos Workflow
+- [x] Created workflows/google_photos.py with OAuth2 flow
+- [x] Created blocks/google_photos_block.py for credentials management
+- [x] Added idempotency: snapshot date directories, deterministic sorting
+- [x] Created OAuth2 setup documentation (docs/GOOGLE_PHOTOS_SETUP.md)
+- [ ] Test with real Google account
+- [ ] Add album support (future enhancement)
+
+### Crunchyroll Workflow
+- [x] Config-based series management
+- [x] Authentication check function
+- [x] Season listing helper
+- [x] Updated config format with season_id support
+- [ ] Test full download flow
+
+### YouTube Workflow
+- [x] Idempotent record filenames (date-only format)
+- [x] snapshot_date parameter for consistent runs
+- [x] Integration with yt-dlp
+
+## Infrastructure
 
 ### Completed ✓
-- [x] Created workflows/google_photos.py with basic structure
-- [x] Created blocks/google_photos_block.py for credentials management
-- [x] Reviewed existing workflows (instagram.py, github.py) for patterns
-- [x] Added google-photos-library-api dependency to pyproject.toml
-- [x] Installed dependencies with `uv pip install -e .`
-- [x] Updated .env.example with GOOGLE_PHOTOS_CREDENTIALS_PATH
-- [x] Reviewed workflow with idempotency-guardian agent
-- [x] Fixed critical idempotency issues:
-  - [x] Added snapshot date directory structure (YYYY-MM-DD)
-  - [x] Implemented idempotency check for existing snapshots
-  - [x] Fixed sort key to include item ID for timestamp collisions
-  - [x] Added execution_timestamp to metadata
-  - [x] Added workflow_version to metadata
-- [x] Created OAuth2 setup documentation (docs/GOOGLE_PHOTOS_SETUP.md)
+- [x] Prefect integration for workflow orchestration
+- [x] Local backup structure: `./backups/local/platform/username/content-type/`
+- [x] Metadata preservation (JSON files)
+- [x] Docker support for Prefect server
 
-### In Progress 🔄
-- [ ] User needs to create OAuth2 credentials from Google Cloud Console
-- [ ] User needs to set GOOGLE_PHOTOS_CREDENTIALS_PATH in .env
+### Planned 🔄
+- [ ] Remote NAS backup functionality
+- [ ] Scheduled deployments (cron-based)
+- [ ] Dashboard for backup status monitoring
 
-### Testing 🧪
-User can now test the workflow by following these steps:
+## Testing Checklist
 
-1. **Set up OAuth2 credentials** (see docs/GOOGLE_PHOTOS_SETUP.md):
-   - Create Google Cloud project
-   - Enable Photos Library API
-   - Configure OAuth consent screen
-   - Download credentials.json
-   - Set GOOGLE_PHOTOS_CREDENTIALS_PATH in .env
-
-2. **Register the Google Photos block**:
-   ```bash
-   source .venv/bin/activate
-   python blocks/google_photos_block.py
-   ```
-
-3. **Test workflow by downloading 1 photo**:
-   ```bash
-   python workflows/google_photos.py
-   ```
-
-4. **Verify backup structure**:
-   ```
-   backups/local/google_photos/user/media/YYYY-MM-DD/
-   ├── <photo-id>.jpg
-   ├── <photo-id>.json
-   └── media_metadata.json
-   ```
-
-5. **Test idempotency**:
-   Run the workflow twice with the same snapshot_date and verify:
-   - Second run skips download
-   - Returns existing metadata
-   - No files are modified
-
-### Known Limitations 🚧
-- Username defaults to "user" (Google Photos API doesn't expose account username)
-- No retry logic for API pagination failures (moderate priority)
-- Album support not yet implemented (future enhancement)
-
-### Final Steps 🎯
-- [x] Review changes with git diff
-- [ ] Commit changes with descriptive message
-- [ ] Push to remote: `git push`
-- [ ] Output completion promise when testing is successful
-
-## Architecture Notes
-
-### Storage Pattern (S3-style)
-```
-backups/local/google_photos/{username}/media/{YYYY-MM-DD}/
-```
-
-This matches the GitHub workflow pattern and enables:
-- Point-in-time snapshots
-- Idempotent backups
-- Non-destructive updates
-
-### Idempotency Guarantees
-The workflow ensures identical results across multiple runs by:
-1. Using snapshot_date for temporal filtering
-2. Sorting by (creation_time, item_id) for deterministic ordering
-3. Checking for existing snapshots before downloading
-4. Storing all timestamps in UTC
-
-### Metadata Structure
-Each backup includes:
-- `media_metadata.json` - Summary with all items, snapshot_date, execution_timestamp, workflow_version
-- Individual `<item-id>.json` - Per-photo metadata with EXIF data, dimensions, etc.
+When testing a workflow:
+1. Run with `max_*` parameter set to 1-2 items
+2. Verify backup directory structure
+3. Check metadata JSON files
+4. Run twice to verify idempotency
+5. Check logs for error handling

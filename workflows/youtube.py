@@ -173,26 +173,32 @@ def save_download_record(
     download_result: dict,
     trigger_source: str,
     output_dir: Path,
+    snapshot_date: datetime,
 ) -> Path:
     """
     Save a record of the download for tracking purposes.
+    Uses snapshot_date for idempotent filenames and timestamps.
     """
     logger = get_run_logger()
 
     records_dir = output_dir / "_records"
     records_dir.mkdir(parents=True, exist_ok=True)
 
+    # Normalize snapshot_date to UTC midnight for consistency
+    snapshot_normalized = snapshot_date.replace(hour=0, minute=0, second=0, microsecond=0)
+
     record = {
-        'downloaded_at': datetime.now(timezone.utc).isoformat(),
+        'downloaded_at': snapshot_normalized.isoformat(),
         'trigger_source': trigger_source,
         'video_info': video_info,
         'download_result': download_result,
     }
 
-    record_file = records_dir / f"{video_info['id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    # Use date-only format for idempotent filenames (no time component)
+    record_file = records_dir / f"{video_info['id']}_{snapshot_normalized.strftime('%Y%m%d')}.json"
 
     with open(record_file, 'w') as f:
-        json.dump(record, f, indent=2, default=str)
+        json.dump(record, f, indent=2, default=str, sort_keys=True)
 
     logger.info(f"Saved download record to {record_file}")
     return record_file
@@ -204,6 +210,7 @@ def download_youtube_video(
     trigger_source: str = "manual",
     output_dir: Path = BACKUP_DIR,
     format_spec: str = "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+    snapshot_date: Optional[datetime] = None,
 ) -> dict:
     """
     Main flow to download a single YouTube video.
@@ -213,6 +220,7 @@ def download_youtube_video(
         trigger_source: Where the download was triggered from (e.g., "twilio", "manual")
         output_dir: Base directory for downloads
         format_spec: yt-dlp format specification
+        snapshot_date: Date for this backup snapshot (defaults to current UTC date at midnight)
 
     Returns:
         Dict with video info and download result
@@ -223,31 +231,42 @@ def download_youtube_video(
     # Ensure output dir is a Path
     output_dir = Path(output_dir)
 
+    # Default snapshot_date to current UTC date at midnight for idempotency
+    if snapshot_date is None:
+        snapshot_date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    elif snapshot_date.tzinfo is None:
+        snapshot_date = snapshot_date.replace(tzinfo=timezone.utc)
+
+    snapshot_str = snapshot_date.strftime("%Y-%m-%d")
+    logger.info(f"Using snapshot date: {snapshot_str}")
+
     # Get video info first
     video_info = get_video_info(url)
 
-    # Download archive for idempotency
+    # Download archive for idempotency (shared across all snapshots)
     download_archive = output_dir / "download_archive.txt"
 
-    # Download the video
+    # Download the video to snapshot-dated directory
     download_result = download_video(
         url=url,
-        output_dir=output_dir / "videos",
+        output_dir=output_dir / snapshot_str / "videos",
         format_spec=format_spec,
         download_archive=download_archive,
     )
 
-    # Save download record
+    # Save download record to snapshot-dated directory
     save_download_record(
         video_info=video_info,
         download_result=download_result,
         trigger_source=trigger_source,
-        output_dir=output_dir,
+        output_dir=output_dir / snapshot_str,
+        snapshot_date=snapshot_date,
     )
 
     return {
         'video_info': video_info,
         'download_result': download_result,
+        'snapshot_date': snapshot_str,
     }
 
 
@@ -256,6 +275,7 @@ def download_youtube_from_sms(
     sms_body: str,
     sms_from: str,
     output_dir: Path = BACKUP_DIR,
+    snapshot_date: Optional[datetime] = None,
 ) -> dict:
     """
     Flow triggered by Twilio SMS webhook.
@@ -265,6 +285,7 @@ def download_youtube_from_sms(
         sms_body: The SMS message body
         sms_from: The sender's phone number
         output_dir: Base directory for downloads
+        snapshot_date: Date for this backup snapshot (defaults to current UTC date at midnight)
 
     Returns:
         Dict with extraction and download results
@@ -289,6 +310,7 @@ def download_youtube_from_sms(
         url=url,
         trigger_source=f"twilio:{sms_from}",
         output_dir=output_dir,
+        snapshot_date=snapshot_date,
     )
 
     result['sms_from'] = sms_from

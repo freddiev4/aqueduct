@@ -31,11 +31,25 @@ This guide explains how to set up OAuth2 credentials for the Google Photos backu
    - User support email: your email
    - Developer contact: your email
 5. Click "Save and Continue"
-6. On "Scopes" page, click "Add or Remove Scopes"
-7. Add the scope: `https://www.googleapis.com/auth/photoslibrary.readonly`
-8. Click "Update" then "Save and Continue"
-9. On "Test users" page, add your Google account email
-10. Click "Save and Continue"
+
+### Add Required Scopes
+
+**Important:** Use the direct scopes URL for your project:
+`https://console.cloud.google.com/auth/scopes?project=YOUR_PROJECT_ID`
+
+1. Click "Add or Remove Scopes"
+2. Add the scope: `https://www.googleapis.com/auth/photoslibrary.readonly`
+3. Click "Update" then "Save and Continue"
+
+### Add Test Users
+
+**Important:** Use the direct audience URL for your project:
+`https://console.cloud.google.com/auth/audience?project=YOUR_PROJECT_ID`
+
+1. Add your Google account email (the account with the photos you want to backup)
+2. Click "Save and Continue"
+
+**Note:** While your app is in "Testing" status, only users added here can authorize the app. You'll get a 403 "access_denied" error if the account isn't listed as a test user.
 
 ## Step 4: Create OAuth2 Credentials
 

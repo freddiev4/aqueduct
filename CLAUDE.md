@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**See [TODO.md](./TODO.md) for current implementation status and planned work.**
+
 ## Project Overview
 
 Aqueduct is a DAG-based backup system for archiving personal data from various platforms (GitHub, Twitter/X, Instagram, Notion) to local storage (and eventually NAS). It uses Prefect as the workflow orchestration framework to schedule and manage backup tasks.
@@ -52,11 +54,17 @@ All backup workflows follow a consistent pattern:
 
 ### Workflow Files
 
-- `workflows/github.py` - Clones repositories and extracts commit history using GitHub GraphQL API (via prefect-github integration)
-- `workflows/twitter.py` - Downloads tweets, bookmarks, and likes with media files using tweepy
-- `workflows/instagram.py` - Downloads user posts and saved posts using instaloader
-- `workflows/notion.py` - Exports pages as markdown with embedded media using notion-client
+**Working workflows:**
+- `workflows/github.py` - Clones repositories and extracts commit history using GitHub GraphQL API
+- `workflows/youtube.py` - Downloads videos via yt-dlp
+- `workflows/crunchyroll.py` - Downloads anime via multi-downloader-nx
+- `workflows/google_photos.py` - Backs up Google Photos library via OAuth2 API
 - `workflows/example.py` - Template showing basic Prefect flow structure
+
+**Workflows needing fixes** (in `workflows/to-fix/`):
+- `workflows/to-fix/twitter.py` - Downloads tweets, bookmarks, and likes with media files
+- `workflows/to-fix/instagram.py` - Downloads user posts and saved posts
+- `workflows/to-fix/notion.py` - Exports pages as markdown with embedded media
 
 ### Key Patterns
 
