@@ -3,13 +3,17 @@ Crunchyroll Anime Backup Workflow
 
 Downloads anime episodes from Crunchyroll using multi-downloader-nx.
 Requires:
-- multi-downloader-nx installed (npm install -g multi-downloader-nx)
+- multi-downloader-nx installed (see workflows/README.md for build instructions)
 - ffmpeg installed
-- MKVtoolNix installed
+- MKVtoolNix installed (optional, for MKV output)
 - Crunchyroll Premium subscription
 
 Series configuration is stored in a JSON file that can be edited to add
 new series or update episode ranges.
+
+Authentication:
+    Run `multi-downloader-nx --service crunchy --auth` to authenticate
+    with your Crunchyroll account before downloading.
 """
 
 import json
@@ -98,37 +102,32 @@ def check_multi_downloader_nx() -> bool:
     """
     logger = get_run_logger()
 
-    try:
-        result = subprocess.run(
-            ["multi-downloader-nx", "--help"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode == 0:
-            logger.info("multi-downloader-nx is available")
-            return True
-    except FileNotFoundError:
-        pass
-    except subprocess.TimeoutExpired:
-        pass
+    # Check common locations
+    paths_to_try = [
+        "multi-downloader-nx",
+        os.path.expanduser("~/bin/multi-downloader-nx"),
+        os.path.expanduser("~/tools/multi-downloader-nx/multi-downloader-nx"),
+    ]
 
-    # Try npx as fallback
-    try:
-        result = subprocess.run(
-            ["npx", "multi-downloader-nx", "--help"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode == 0:
-            logger.info("multi-downloader-nx is available via npx")
-            return True
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+    for cmd_path in paths_to_try:
+        try:
+            result = subprocess.run(
+                [cmd_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                version = result.stdout.strip()
+                logger.info(f"multi-downloader-nx v{version} found at {cmd_path}")
+                return True
+        except FileNotFoundError:
+            continue
+        except subprocess.TimeoutExpired:
+            continue
 
     logger.error(
-        "multi-downloader-nx not found. Install with: npm install -g multi-downloader-nx"
+        "multi-downloader-nx not found. See workflows/README.md for build instructions."
     )
     return False
 
@@ -205,6 +204,30 @@ def sanitize_filename(name: str) -> str:
     return name.strip()
 
 
+def find_multi_downloader_nx() -> str:
+    """Find the multi-downloader-nx executable."""
+    paths_to_try = [
+        "multi-downloader-nx",
+        os.path.expanduser("~/bin/multi-downloader-nx"),
+        os.path.expanduser("~/tools/multi-downloader-nx/multi-downloader-nx"),
+    ]
+
+    for cmd_path in paths_to_try:
+        try:
+            result = subprocess.run(
+                [cmd_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                return cmd_path
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+
+    return "multi-downloader-nx"  # Fallback to PATH
+
+
 @task(cache_policy=NO_CACHE)
 def download_series(
     series_config: dict,
@@ -235,8 +258,9 @@ def download_series(
     series_dir.mkdir(parents=True, exist_ok=True)
 
     # Build command
+    multi_dl_cmd = find_multi_downloader_nx()
     cmd = [
-        "multi-downloader-nx",
+        multi_dl_cmd,
         "--service", "crunchy",
         "--series", series_url,
         "--episodes", episodes,
