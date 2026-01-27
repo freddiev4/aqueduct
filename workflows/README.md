@@ -9,7 +9,7 @@ This directory contains backup workflows for various platforms. Each workflow is
 | [Google Photos](#google-photos) | Working | Backup photos and videos from Google Photos |
 | [GitHub](#github) | Working | Backup repositories and commit history |
 | [YouTube](#youtube) | Working | Download YouTube videos (Twilio SMS trigger) |
-| [Crunchyroll](#crunchyroll) | Requires Setup | Download anime from Crunchyroll |
+| [Crunchyroll](#crunchyroll) | Working (requires auth) | Download anime from Crunchyroll |
 | [Example](#example) | Template | Basic Prefect flow reference |
 | `to-fix/instagram.py` | Broken | Needs repair |
 | `to-fix/notion.py` | Broken | Needs repair |
@@ -38,20 +38,34 @@ The Crunchyroll workflow requires [multi-downloader-nx](https://github.com/anidl
 git clone https://github.com/anidl/multi-downloader-nx.git ~/tools/multi-downloader-nx
 cd ~/tools/multi-downloader-nx
 
-# Install dependencies
+# Install dependencies (requires pnpm)
 pnpm install
 
 # Build CLI
 pnpm run prebuild-cli
 
-# Add to PATH (add to ~/.bashrc or ~/.zshrc)
-export PATH="$HOME/tools/multi-downloader-nx/lib:$PATH"
+# Create wrapper script
+cat > ~/tools/multi-downloader-nx/multi-downloader-nx << 'EOF'
+#!/bin/bash
+SCRIPT_DIR="$HOME/tools/multi-downloader-nx/lib"
+cd "$SCRIPT_DIR"
+exec node index.js "$@"
+EOF
+chmod +x ~/tools/multi-downloader-nx/multi-downloader-nx
 
-# Or create a symlink
-ln -s ~/tools/multi-downloader-nx/lib/cli-default /usr/local/bin/multi-downloader-nx
+# Add to PATH (create ~/bin and symlink)
+mkdir -p ~/bin
+ln -sf ~/tools/multi-downloader-nx/multi-downloader-nx ~/bin/multi-downloader-nx
+echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc  # or ~/.bashrc
+source ~/.zshrc
+
+# Verify installation
+multi-downloader-nx --version
 ```
 
-**Note**: Crunchyroll uses DRM protection. May require additional decryption tools (`mp4decrypt` or `shaka-packager`) and a **Crunchyroll Premium** subscription.
+**Current installation:** `~/tools/multi-downloader-nx/` (v5.6.9)
+
+**Note**: Crunchyroll uses DRM protection. Requires a **Crunchyroll Premium** subscription. May require additional decryption tools (`mp4decrypt` or `shaka-packager`) for some content.
 
 ---
 
@@ -254,6 +268,17 @@ Downloads anime from Crunchyroll using multi-downloader-nx.
 1. Install system dependencies (see [System Dependencies](#system-dependencies))
 2. Build multi-downloader-nx from source (see [above](#crunchyroll-multi-downloader-nx))
 3. Have a Crunchyroll Premium subscription
+4. **Authenticate with Crunchyroll:**
+   ```bash
+   multi-downloader-nx --service crunchy --auth
+   ```
+   This will prompt you to log in. Credentials are saved locally.
+
+### Search for anime
+
+```bash
+multi-downloader-nx --service crunchy --search "solo leveling"
+```
 
 ### Configuration
 
