@@ -1,0 +1,20 @@
+{
+  "version": "1.1.0",
+  "updated_at": "2026-01-27T21:24:41.474512+00:00",
+  "crunchyroll_config": {
+    "quality": "1080",
+    "audio_lang": "jpn",
+    "subtitle_lang": "en",
+    "output_format": "mkv"
+  },
+  "series": [
+    {
+      "name": "Solo Leveling S1",
+      "season_id": "GR19CPDWM",
+      "episodes": "1-2",
+      "enabled": true,
+      "notes": "Test series",
+      "added_at": "2026-01-27T21:24:41.474384+00:00"
+    }
+  ]
+}
