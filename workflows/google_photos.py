@@ -5,9 +5,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import json
+import webbrowser
+from urllib.parse import urlparse, parse_qs
+import wsgiref.simple_server
+import wsgiref.util
+
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
 from prefect import flow, task
@@ -20,6 +26,7 @@ from blocks.google_photos_block import GooglePhotosBlock
 # Google Photos API scopes
 SCOPES = [
     'https://www.googleapis.com/auth/photoslibrary.readonly',
+    'https://www.googleapis.com/auth/photoslibrary',  # Added broader scope for API access
 ]
 
 # Workaround for oauthlib being strict about scope changes
@@ -53,9 +60,53 @@ def get_authenticated_service(credentials_path: str):
         else:
             print("Starting OAuth2 flow...")
             print("A browser window will open for authorization...")
-            flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
-            # Use fixed port 8080 - must match redirect_uri in Google Cloud Console
-            creds = flow.run_local_server(port=8080, open_browser=True)
+
+            # Create flow with explicit redirect URI for web applications
+            flow = Flow.from_client_secrets_file(
+                credentials_path,
+                scopes=SCOPES,
+                redirect_uri='http://localhost:8080'
+            )
+
+            # Get authorization URL
+            auth_url, _ = flow.authorization_url(
+                access_type='offline',
+                include_granted_scopes='true'
+            )
+
+            # Open browser for authorization
+            print(f"Opening browser for authorization: {auth_url}")
+            webbrowser.open(auth_url)
+
+            # Start local server to receive callback
+            authorization_code = None
+
+            class CallbackHandler(wsgiref.simple_server.WSGIRequestHandler):
+                def log_message(self, format, *args):
+                    pass  # Suppress logs
+
+            def wsgi_app(environ, start_response):
+                nonlocal authorization_code
+                query_string = environ.get('QUERY_STRING', '')
+                params = parse_qs(query_string)
+
+                if 'code' in params:
+                    authorization_code = params['code'][0]
+                    start_response('200 OK', [('Content-Type', 'text/html')])
+                    return [b'<html><body><h1>Authentication successful!</h1><p>You can close this window.</p></body></html>']
+                else:
+                    start_response('400 Bad Request', [('Content-Type', 'text/html')])
+                    return [b'<html><body><h1>Authentication failed</h1></body></html>']
+
+            server = wsgiref.simple_server.make_server('localhost', 8080, wsgi_app, handler_class=CallbackHandler)
+            server.handle_request()
+
+            if authorization_code:
+                # Exchange authorization code for credentials
+                flow.fetch_token(code=authorization_code)
+                creds = flow.credentials
+            else:
+                raise Exception("Failed to get authorization code")
 
         # Save the credentials for the next run
         with open(token_path, 'w') as token:
@@ -123,18 +174,18 @@ def download_media_items(
     # Collect all media items and sort deterministically
     all_items = []
 
-    # List all media items using the mediaItems.search endpoint
+    # List all media items using the mediaItems.list endpoint
     page_token = None
     while True:
         try:
-            # Search for media items
-            body = {
+            # List media items (simpler than search, might have different permissions)
+            params = {
                 "pageSize": 100,
             }
             if page_token:
-                body["pageToken"] = page_token
+                params["pageToken"] = page_token
 
-            results = service.mediaItems().search(body=body).execute()
+            results = service.mediaItems().list(**params).execute()
 
             media_items = results.get('mediaItems', [])
 

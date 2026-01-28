@@ -61,6 +61,8 @@ This guide explains how to set up OAuth2 credentials for the Google Photos backu
 6. Click "Download JSON" to download the credentials file
 7. Save the file as `credentials.json` in your aqueduct project root directory
 
+**Note:** Desktop apps automatically include redirect URIs for `http://localhost:8000` and other localhost ports.
+
 ## Step 5: Configure Environment Variable
 
 1. Open your `.env` file (create it if it doesn't exist)
@@ -145,6 +147,6 @@ if __name__ == "__main__":
 ## Security Notes
 
 - Never commit `credentials.json` to version control (it's in `.gitignore`)
-- The OAuth token is stored in `~/.google-photos-library-api/` by default
+- The OAuth token is stored in `~/.google-photos-tokens/token.json` by default
 - Credentials give read-only access to your Google Photos library
 - You can revoke access at any time from [Google Account Settings](https://myaccount.google.com/permissions)
