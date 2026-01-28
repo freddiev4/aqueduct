@@ -1,0 +1,2 @@
+# Production-specific manifests
+# Place dashboards, prometheus rules, and production secrets here

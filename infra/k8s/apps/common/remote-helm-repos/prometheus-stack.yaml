@@ -1,0 +1,28 @@
+# Example: Prometheus stack from remote Helm repo
+# Uncomment and configure in app-of-apps/prod.yaml or test.yaml
+#
+# Add to repos:
+#   - name: prometheus-community
+#     url: https://prometheus-community.github.io/helm-charts
+#
+# Add to apps:
+#   - name: prometheus-stack
+#     chart: kube-prometheus-stack
+#     repoURL: https://prometheus-community.github.io/helm-charts
+#     targetRevision: "45.0.0"
+#     namespace: monitoring
+#     values: |
+#       prometheus:
+#         prometheusSpec:
+#           retention: 15d
+#           storageSpec:
+#             volumeClaimTemplate:
+#               spec:
+#                 storageClassName: ebs-sc
+#                 resources:
+#                   requests:
+#                     storage: 50Gi
+#       grafana:
+#         enabled: true
+#       alertmanager:
+#         enabled: true

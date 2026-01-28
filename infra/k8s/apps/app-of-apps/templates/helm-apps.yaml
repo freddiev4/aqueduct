@@ -1,0 +1,91 @@
+{{- range $repo := .Values.repos}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: helm-repo-{{$repo.name}}
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  url: {{$repo.url}}
+  name: {{$repo.name}}
+  type: helm
+{{- if hasPrefix "oci://" $repo.url }}
+  enableOCI: "true"
+{{- end }}
+---
+{{ end}}
+{{- range $app := .Values.apps }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  name: {{ $app.name }}
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+  labels:
+    argocd.argoproj.io/instance: app-of-apps
+spec:
+  destination:
+    namespace: {{ $app.namespace | default "default"  }}
+    server: {{ $app.server  | default "https://kubernetes.default.svc"}}
+  project: default
+  source:
+    {{- if hasKey $app "chart" }}
+    chart: {{ $app.chart }}
+    repoURL: {{ $app.repoURL }}
+    targetRevision: {{ $app.targetRevision }}
+    {{- if or (hasKey $app "valueFile") (hasKey $app "values") (hasKey $app "parameters") }}
+    helm:
+      {{- if hasKey $app "valueFile" }}
+      valueFiles:
+        - {{ $app.valueFile }}
+      {{- end }}
+      {{- if hasKey $app "values" }}
+      values: |
+{{ tpl $app.values $ | indent 8 }}
+      {{- end }}
+      {{- if hasKey $app "parameters" }}
+      parameters:
+        {{- range $param := $app.parameters }}
+        - name: {{ $param.name }}
+          value: {{ $param.value | quote }}
+          {{- if hasKey $param "forceString" }}
+          forceString: {{ $param.forceString }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- else }}
+    path: {{ $app.path }}
+    repoURL: {{ $app.repoURL | default "git@github.com:your-org/aqueduct.git" }}
+    targetRevision: {{ $app.targetRevision | default "HEAD" }}
+    {{- if or (hasKey $app "recursive") (hasKey $app "jsonnet") (hasKey $app "directory") }}
+    directory:
+      {{- if hasKey $app "recursive" }}
+      recurse: {{ $app.recursive }}
+      {{- end }}
+      {{- if hasKey $app "jsonnet" }}
+      jsonnet: {{ toYaml $app.jsonnet | nindent 8 }}
+      {{- end }}
+      {{- if hasKey $app "directory" }}
+{{ toYaml $app.directory | indent 6 }}
+      {{- end }}
+    {{- end }}
+    {{- end }}
+  syncPolicy:
+    {{- if hasKey $app "syncPolicy" }}
+{{ toYaml $app.syncPolicy | indent 4 }}
+    {{- else }}
+    automated:
+      prune: true
+      selfHeal: true
+    {{- end }}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+---
+{{ end }}

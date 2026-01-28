@@ -1,0 +1,51 @@
+# Application name - used in metadata and labels
+name: example-app
+
+# Container image configuration
+image:
+  repository: your-registry/example-app
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Number of replicas
+replicaCount: 2
+
+# Service configuration
+service:
+  port: 8080
+  metricsPort: 9090
+
+# Ingress configuration (optional)
+ingress:
+  enabled: false
+  hostname: example.your-domain.com
+
+# Resource limits and requests
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Environment variables
+env:
+  ENVIRONMENT: production
+
+# Service account configuration
+serviceAccount:
+  create: true
+  # IAM role ARN for AWS access (optional)
+  # roleArn: arn:aws:iam::123456789:role/example-role
+
+# Node selector for scheduling
+nodeSelector: {}
+  # node-type: managed-services
+
+# Tolerations for scheduling
+tolerations: []
+  # - key: "CriticalService"
+  #   operator: "Equal"
+  #   value: "true"
+  #   effect: "NoSchedule"

@@ -1,0 +1,27 @@
+# Production environment configuration
+# Add Helm repositories here
+repos:
+  # - name: prometheus-community
+  #   url: https://prometheus-community.github.io/helm-charts
+
+# Add applications here
+apps:
+  # Example: Common manifests
+  # - name: common-manifests
+  #   path: infra/k8s/apps/common/manifests
+  #   recursive: true
+
+  # Example: Remote Helm chart
+  # - name: prometheus
+  #   chart: kube-prometheus-stack
+  #   repoURL: https://prometheus-community.github.io/helm-charts
+  #   targetRevision: "45.0.0"
+  #   namespace: monitoring
+  #   values: |
+  #     prometheus:
+  #       enabled: true
+
+  # Example: Local Helm chart
+  # - name: my-service
+  #   path: infra/k8s/apps/my-service
+  #   namespace: default

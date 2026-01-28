@@ -1,0 +1,5 @@
+apiVersion: v2
+appVersion: "1.0"
+description: Parent application that manages all other ArgoCD applications
+name: app-of-apps
+version: 0.1.0

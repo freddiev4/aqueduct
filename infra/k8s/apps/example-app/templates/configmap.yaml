@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.name }}-config
+  namespace: default
+data:
+  APP_NAME: {{ .Values.name }}
+  # Add additional configuration here

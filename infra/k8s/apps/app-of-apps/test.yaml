@@ -1,0 +1,18 @@
+# Test environment configuration
+# Add Helm repositories here
+repos:
+  # - name: prometheus-community
+  #   url: https://prometheus-community.github.io/helm-charts
+
+# Add applications here
+apps:
+  # Example: Common manifests
+  # - name: common-manifests
+  #   path: infra/k8s/apps/common/test-manifests
+  #   recursive: true
+
+  # Example: Local Helm chart with test values
+  # - name: my-service
+  #   path: infra/k8s/apps/my-service
+  #   namespace: default
+  #   valueFile: values-test.yaml
