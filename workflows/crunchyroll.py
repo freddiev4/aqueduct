@@ -181,15 +181,23 @@ def list_seasons_for_series(series_id: str) -> dict:
 
 
 @task(cache_policy=NO_CACHE)
-def load_series_config(config_path: Path = CONFIG_FILE) -> dict:
+def load_series_config(config_path: Path = CONFIG_FILE, use_logger: bool = True) -> dict:
     """
     Load the series configuration file.
     Creates default config if it doesn't exist.
+
+    Args:
+        config_path: Path to config file
+        use_logger: Use Prefect logger (True) or print (False) for CLI usage
     """
-    logger = get_run_logger()
+    if use_logger:
+        logger = get_run_logger()
+        log_fn = logger.info
+    else:
+        log_fn = print
 
     if not config_path.exists():
-        logger.info(f"Config file not found, creating default at {config_path}")
+        log_fn(f"Config file not found, creating default at {config_path}")
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
         default_config = get_default_config()
@@ -201,7 +209,7 @@ def load_series_config(config_path: Path = CONFIG_FILE) -> dict:
     with open(config_path, 'r') as f:
         config = json.load(f)
 
-    logger.info(f"Loaded config with {len(config.get('series', []))} series")
+    log_fn(f"Loaded config with {len(config.get('series', []))} series")
     return config
 
 
@@ -821,7 +829,7 @@ if __name__ == "__main__":
 
         elif sys.argv[1] == "--list":
             # List configured series
-            config = load_series_config.fn(CONFIG_FILE)
+            config = load_series_config.fn(CONFIG_FILE, use_logger=False)
             print(f"\nConfigured series ({len(config.get('series', []))}):")
             for s in config.get('series', []):
                 status = "enabled" if s.get('enabled', True) else "disabled"
