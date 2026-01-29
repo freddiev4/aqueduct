@@ -9,8 +9,10 @@
 #   - Docker installation with choice of Colima (recommended) or Docker Desktop on macOS
 #   - Kubernetes tooling (kubectl, kind)
 #   - ArgoCD CLI for GitOps workflows
+#   - GitHub CLI (gh) for GitHub operations
 #   - Atuin shell history tool for enhanced command history
 #   - Claude Code CLI for AI-assisted development
+#   - Claude agents, plugins, and skills from freddiev4/agents repo
 #   - Automatic Homebrew installation on macOS
 #   - VirtualBox support for older Macs
 #   - JSON version report generation
@@ -25,9 +27,11 @@
 #   4. Install kind (Kubernetes in Docker - requires Docker)
 #   5. Install kubectl (if not already installed by kind)
 #   6. Install ArgoCD CLI for GitOps workflows
-#   7. Install Atuin shell history tool
-#   8. Install Claude Code CLI for AI-assisted development
-#   9. Generate a timestamped JSON report of installed versions
+#   7. Install GitHub CLI for GitHub operations
+#   8. Install Atuin shell history tool
+#   9. Install Claude Code CLI for AI-assisted development
+#  10. Install Claude agents, plugins, and skills from agents repo
+#  11. Generate a timestamped JSON report of installed versions
 #
 
 set -e  # Exit on error
@@ -396,6 +400,204 @@ install_claude_code() {
     fi
 }
 
+# Install GitHub CLI
+install_github_cli() {
+    local os=$1
+    local arch=$2
+
+    info "Installing GitHub CLI (gh) for ${os}/${arch}..."
+
+    # Check if gh is already installed
+    if command_exists gh; then
+        local current_version=$(gh --version 2>/dev/null | head -n1 || echo "unknown")
+        warn "GitHub CLI is already installed (${current_version})"
+        read -p "Do you want to reinstall? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            info "Skipping GitHub CLI installation"
+            return 0
+        fi
+    fi
+
+    if [ "$os" = "darwin" ]; then
+        # macOS - Install via Homebrew
+        if ! command_exists brew; then
+            error "Homebrew is required to install GitHub CLI on macOS"
+            return 1
+        fi
+        info "Installing GitHub CLI via Homebrew..."
+        brew install gh
+    elif [ "$os" = "linux" ]; then
+        # Linux - Check for package manager
+        if command_exists apt-get; then
+            # Debian/Ubuntu - Use official repository
+            info "Installing GitHub CLI via apt (official repository)..."
+
+            # Ensure wget is available
+            if ! command_exists wget; then
+                sudo apt update && sudo apt install wget -y
+            fi
+
+            # Set up the repository and install
+            sudo mkdir -p -m 755 /etc/apt/keyrings
+            local tmpfile=$(mktemp)
+            wget -nv -O "$tmpfile" https://cli.github.com/packages/githubcli-archive-keyring.gpg
+            cat "$tmpfile" | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null
+            sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+            rm -f "$tmpfile"
+
+            sudo mkdir -p -m 755 /etc/apt/sources.list.d
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+
+            sudo apt update
+            sudo apt install gh -y
+        elif command_exists dnf; then
+            # Fedora/RHEL - Use official repository
+            info "Installing GitHub CLI via dnf..."
+            sudo dnf install -y 'dnf-command(config-manager)'
+            sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+            sudo dnf install -y gh
+        elif command_exists yum; then
+            # Older RHEL/CentOS
+            info "Installing GitHub CLI via yum..."
+            sudo yum-config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+            sudo yum install -y gh
+        else
+            # Fallback - Download precompiled binary
+            info "No supported package manager found, downloading precompiled binary..."
+
+            # Get latest version from GitHub API
+            local version=$(curl -s https://api.github.com/repos/cli/cli/releases/latest | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
+            if [ -z "$version" ]; then
+                error "Failed to fetch latest GitHub CLI version"
+                return 1
+            fi
+
+            local gh_arch="$arch"
+            if [ "$arch" = "amd64" ]; then
+                gh_arch="amd64"
+            elif [ "$arch" = "arm64" ]; then
+                gh_arch="arm64"
+            fi
+
+            local gh_url="https://github.com/cli/cli/releases/download/v${version}/gh_${version}_linux_${gh_arch}.tar.gz"
+            info "Downloading from ${gh_url}..."
+
+            if ! curl -sL -o /tmp/gh.tar.gz "$gh_url"; then
+                error "Failed to download GitHub CLI"
+                return 1
+            fi
+
+            tar -xzf /tmp/gh.tar.gz -C /tmp
+            if [ -w /usr/local/bin ]; then
+                mv /tmp/gh_${version}_linux_${gh_arch}/bin/gh /usr/local/bin/gh
+            else
+                sudo mv /tmp/gh_${version}_linux_${gh_arch}/bin/gh /usr/local/bin/gh
+            fi
+            rm -rf /tmp/gh.tar.gz /tmp/gh_${version}_linux_${gh_arch}
+        fi
+    else
+        error "GitHub CLI installation not supported for OS: ${os}"
+        return 1
+    fi
+
+    # Verify installation
+    if command_exists gh; then
+        info "✓ GitHub CLI installed successfully: $(gh --version 2>/dev/null | head -n1)"
+    else
+        error "GitHub CLI installation failed"
+        return 1
+    fi
+}
+
+# Install Claude agents configuration from agents repo
+install_claude_agents_config() {
+    local agents_repo="git@github.com:freddiev4/agents.git"
+    local clone_dir="/tmp/agents-config-$$"
+    local claude_dir="$HOME/.claude"
+
+    info "Installing Claude agents configuration..."
+
+    # Check if git is available
+    if ! command_exists git; then
+        error "git is required to clone the agents repo"
+        return 1
+    fi
+
+    # Clone the agents repo to a temp directory
+    info "Cloning agents repo..."
+    if ! git clone --depth 1 "$agents_repo" "$clone_dir" 2>/dev/null; then
+        error "Failed to clone agents repo from $agents_repo"
+        error "Make sure you have SSH access to the repository"
+        return 1
+    fi
+
+    # Create ~/.claude if it doesn't exist
+    mkdir -p "$claude_dir"
+
+    # Copy .claude/agents directory
+    if [ -d "$clone_dir/.claude/agents" ]; then
+        info "Installing Claude agents..."
+        mkdir -p "$claude_dir/agents"
+        cp -r "$clone_dir/.claude/agents/"* "$claude_dir/agents/" 2>/dev/null || true
+        info "✓ Agents installed to $claude_dir/agents/"
+    fi
+
+    # Copy .claude/hooks directory
+    if [ -d "$clone_dir/.claude/hooks" ]; then
+        info "Installing Claude hooks..."
+        mkdir -p "$claude_dir/hooks"
+        cp -r "$clone_dir/.claude/hooks/"* "$claude_dir/hooks/" 2>/dev/null || true
+        info "✓ Hooks installed to $claude_dir/hooks/"
+    fi
+
+    # Handle settings.json - merge or install
+    if [ -f "$clone_dir/.claude/settings.json" ]; then
+        if [ -f "$claude_dir/settings.json" ]; then
+            info "Backing up existing settings.json..."
+            cp "$claude_dir/settings.json" "$claude_dir/settings.json.backup.$(date +%Y%m%d%H%M%S)"
+        fi
+        info "Installing Claude settings..."
+        cp "$clone_dir/.claude/settings.json" "$claude_dir/settings.json"
+        info "✓ Settings installed to $claude_dir/settings.json"
+    fi
+
+    # Copy plugins directory
+    if [ -d "$clone_dir/plugins" ]; then
+        info "Installing Claude plugins..."
+        mkdir -p "$claude_dir/plugins"
+        # Copy each plugin directory
+        for plugin_dir in "$clone_dir/plugins"/*; do
+            if [ -d "$plugin_dir" ]; then
+                plugin_name=$(basename "$plugin_dir")
+                cp -r "$plugin_dir" "$claude_dir/plugins/"
+                info "  - Installed plugin: $plugin_name"
+            fi
+        done
+        info "✓ Plugins installed to $claude_dir/plugins/"
+    fi
+
+    # Copy skills directory
+    if [ -d "$clone_dir/skills" ]; then
+        info "Installing Claude skills..."
+        mkdir -p "$claude_dir/skills"
+        # Copy each skill directory
+        for skill_dir in "$clone_dir/skills"/*; do
+            if [ -d "$skill_dir" ]; then
+                skill_name=$(basename "$skill_dir")
+                cp -r "$skill_dir" "$claude_dir/skills/"
+                info "  - Installed skill: $skill_name"
+            fi
+        done
+        info "✓ Skills installed to $claude_dir/skills/"
+    fi
+
+    # Clean up temp directory
+    rm -rf "$clone_dir"
+
+    info "✓ Claude agents configuration installed successfully"
+}
+
 # Install Atuin
 install_atuin() {
     info "Installing Atuin shell history tool..."
@@ -657,6 +859,7 @@ write_version_report() {
     local kubectl_version="not installed"
     local kind_version="not installed"
     local argocd_version="not installed"
+    local gh_version="not installed"
     local atuin_version="not installed"
     local claude_version="not installed"
 
@@ -705,12 +908,30 @@ write_version_report() {
         argocd_version=$(argocd version --client --short 2>/dev/null | head -n1 | sed 's/argocd: //' || echo "installed (version unknown)")
     fi
 
+    if command_exists gh; then
+        gh_version=$(gh --version 2>/dev/null | head -n1 | sed 's/gh version //' | cut -d' ' -f1 || echo "installed (version unknown)")
+    fi
+
     if command_exists atuin; then
         atuin_version=$(atuin --version 2>/dev/null | head -n1 || echo "installed (version unknown)")
     fi
 
     if command_exists claude; then
         claude_version=$(claude --version 2>/dev/null | head -n1 || echo "installed (version unknown)")
+    fi
+
+    local claude_agents_count=0
+    local claude_plugins_count=0
+    local claude_skills_count=0
+
+    if [ -d "$HOME/.claude/agents" ]; then
+        claude_agents_count=$(find "$HOME/.claude/agents" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+    fi
+    if [ -d "$HOME/.claude/plugins" ]; then
+        claude_plugins_count=$(find "$HOME/.claude/plugins" -maxdepth 1 -type d 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
+    fi
+    if [ -d "$HOME/.claude/skills" ]; then
+        claude_skills_count=$(find "$HOME/.claude/skills" -maxdepth 1 -type d 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
     fi
 
     # Get full system info
@@ -743,8 +964,12 @@ write_version_report() {
     "kubectl": "${kubectl_version}",
     "kind": "${kind_version}",
     "argocd": "${argocd_version}",
+    "gh": "${gh_version}",
     "atuin": "${atuin_version}",
-    "claude": "${claude_version}"
+    "claude": "${claude_version}",
+    "claude_agents": ${claude_agents_count},
+    "claude_plugins": ${claude_plugins_count},
+    "claude_skills": ${claude_skills_count}
   }
 }
 EOF
@@ -813,10 +1038,16 @@ main() {
     install_argocd "$OS" "$ARCH" || warn "ArgoCD CLI installation failed, continuing..."
     echo
 
+    install_github_cli "$OS" "$ARCH" || warn "GitHub CLI installation failed, continuing..."
+    echo
+
     install_atuin || warn "Atuin installation failed, continuing..."
     echo
 
     install_claude_code || warn "Claude Code installation failed, continuing..."
+    echo
+
+    install_claude_agents_config || warn "Claude agents config installation failed, continuing..."
     echo
 
     echo -e "${GREEN}========================================${NC}"
@@ -848,11 +1079,26 @@ main() {
     if command_exists argocd; then
         echo "  - argocd: $(argocd version --client --short 2>/dev/null | head -n1)"
     fi
+    if command_exists gh; then
+        echo "  - gh: $(gh --version 2>/dev/null | head -n1)"
+    fi
     if command_exists atuin; then
         echo "  - atuin: $(atuin --version 2>/dev/null | head -n1)"
     fi
     if command_exists claude; then
         echo "  - claude: installed (run 'claude --version' to verify)"
+        if [ -d "$HOME/.claude/agents" ]; then
+            local agent_count=$(find "$HOME/.claude/agents" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+            echo "    agents: ${agent_count} installed"
+        fi
+        if [ -d "$HOME/.claude/plugins" ]; then
+            local plugin_count=$(find "$HOME/.claude/plugins" -maxdepth 1 -type d 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
+            echo "    plugins: ${plugin_count} installed"
+        fi
+        if [ -d "$HOME/.claude/skills" ]; then
+            local skill_count=$(find "$HOME/.claude/skills" -maxdepth 1 -type d 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
+            echo "    skills: ${skill_count} installed"
+        fi
     fi
     echo
 
@@ -877,6 +1123,11 @@ main() {
     fi
     if command_exists argocd; then
         echo "  argocd --help                    - ArgoCD CLI help"
+    fi
+    if command_exists gh; then
+        echo "  gh auth login                    - Authenticate with GitHub"
+        echo "  gh repo clone <repo>             - Clone a repository"
+        echo "  gh pr list                       - List pull requests"
     fi
     if command_exists atuin; then
         echo "  atuin search                     - Search shell history"
