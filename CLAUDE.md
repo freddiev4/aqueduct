@@ -8,6 +8,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Aqueduct is a DAG-based backup system for archiving personal data from various platforms (GitHub, Twitter/X, Instagram, Notion) to local storage (and eventually NAS). It uses Prefect as the workflow orchestration framework to schedule and manage backup tasks.
 
+
+## Subagents
+When making new workflows, use the [workflow-builder](.claude/agents/workflow-builder.md) subagent to create the workflow.
+
+Then use the idempotency agent to ensure the workflow is idempotent.
+
+Then use the workflow-testing-agent to test the workflow.
+
 ## Development Environment
 
 ### Setup Commands
@@ -30,16 +38,6 @@ docker run -p 4200:4200 --rm prefecthq/prefect:3-latest -- prefect server start 
 
 Access the Prefect UI at http://localhost:4200
 
-### Git Workflow
-
-**IMPORTANT**: After making any changes to the codebase, you MUST commit and push:
-
-1. Check git status: `git status`
-2. Review changes: `git diff`
-3. Stage and commit changes with a descriptive message
-4. Push to remote: `git push`
-
-Always commit and push after completing a logical unit of work (e.g., implementing a feature, fixing a bug, refactoring code).
 
 ## Architecture
 
