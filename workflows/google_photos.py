@@ -4,8 +4,6 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
-
-import json
 import webbrowser
 from urllib.parse import urlparse, parse_qs
 import wsgiref.simple_server
@@ -68,10 +66,11 @@ def get_authenticated_service(credentials_path: str):
                 redirect_uri='http://localhost:8080'
             )
 
-            # Get authorization URL
+            # Get authorization URL with prompt=consent to force re-consent and get refresh_token
             auth_url, _ = flow.authorization_url(
                 access_type='offline',
-                include_granted_scopes='true'
+                include_granted_scopes='true',
+                prompt='consent'  # Force consent screen to get refresh_token
             )
 
             # Open browser for authorization
@@ -108,9 +107,21 @@ def get_authenticated_service(credentials_path: str):
             else:
                 raise Exception("Failed to get authorization code")
 
-        # Save the credentials for the next run
+        # Save the credentials for the next run with all required fields
         with open(token_path, 'w') as token:
-            token.write(creds.to_json())
+            token_data = {
+                'token': creds.token,
+                'refresh_token': creds.refresh_token,
+                'token_uri': creds.token_uri,
+                'client_id': creds.client_id,
+                'client_secret': creds.client_secret,
+                'scopes': creds.scopes,
+            }
+            # Add optional fields if present
+            if hasattr(creds, 'expiry') and creds.expiry:
+                token_data['expiry'] = creds.expiry.isoformat()
+
+            json.dump(token_data, token, indent=2)
         print(f"Token saved to {token_path}")
 
     # Build the service
