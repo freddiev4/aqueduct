@@ -13,6 +13,8 @@
 #   - Atuin shell history tool for enhanced command history
 #   - Claude Code CLI for AI-assisted development
 #   - Claude agents, plugins, and skills from freddiev4/agents repo
+#   - uv Python package manager for fast dependency management
+#   - Bun JavaScript runtime for fast JS/TS execution
 #   - Automatic Homebrew installation on macOS
 #   - VirtualBox support for older Macs
 #   - JSON version report generation
@@ -31,7 +33,9 @@
 #   8. Install Atuin shell history tool
 #   9. Install Claude Code CLI for AI-assisted development
 #  10. Install Claude agents, plugins, and skills from agents repo
-#  11. Generate a timestamped JSON report of installed versions
+#  11. Install uv Python package manager
+#  12. Install Bun JavaScript runtime
+#  13. Generate a timestamped JSON report of installed versions
 #
 
 set -e  # Exit on error
@@ -365,6 +369,70 @@ install_kind() {
     else
         error "kind installation failed"
         return 1
+    fi
+}
+
+# Install uv (Python package manager)
+install_uv() {
+    info "Installing uv (Python package manager)..."
+
+    # Check if uv is already installed
+    if command -v uv &> /dev/null; then
+        local current_version=$(uv --version 2>/dev/null || echo "unknown")
+        warn "uv is already installed (version: ${current_version})"
+        read -p "Do you want to reinstall? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            info "Skipping uv installation"
+            return 0
+        fi
+    fi
+
+    # Download and run the official installer
+    info "Downloading and running official uv installer..."
+    if ! curl -LsSf https://astral.sh/uv/install.sh | sh; then
+        error "Failed to install uv"
+        return 1
+    fi
+
+    # Verify installation
+    if command -v uv &> /dev/null; then
+        info "✓ uv installed successfully: $(uv --version 2>/dev/null)"
+    else
+        warn "uv may have been installed but is not in current PATH"
+        warn "You may need to restart your shell or source your shell config"
+    fi
+}
+
+# Install Bun (JavaScript runtime)
+install_bun() {
+    info "Installing Bun (JavaScript runtime)..."
+
+    # Check if bun is already installed
+    if command -v bun &> /dev/null; then
+        local current_version=$(bun --version 2>/dev/null || echo "unknown")
+        warn "Bun is already installed (version: ${current_version})"
+        read -p "Do you want to reinstall? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            info "Skipping Bun installation"
+            return 0
+        fi
+    fi
+
+    # Download and run the official installer
+    info "Downloading and running official Bun installer..."
+    if ! curl -fsSL https://bun.sh/install | bash; then
+        error "Failed to install Bun"
+        return 1
+    fi
+
+    # Verify installation
+    if command -v bun &> /dev/null; then
+        info "✓ Bun installed successfully: $(bun --version 2>/dev/null)"
+    else
+        warn "Bun may have been installed but is not in current PATH"
+        warn "You may need to restart your shell or source your shell config"
     fi
 }
 
@@ -862,6 +930,8 @@ write_version_report() {
     local gh_version="not installed"
     local atuin_version="not installed"
     local claude_version="not installed"
+    local uv_version="not installed"
+    local bun_version="not installed"
 
     # Check for Homebrew (macOS only)
     if [ "$os" = "darwin" ] && command_exists brew; then
@@ -920,6 +990,14 @@ write_version_report() {
         claude_version=$(claude --version 2>/dev/null | head -n1 || echo "installed (version unknown)")
     fi
 
+    if command_exists uv; then
+        uv_version=$(uv --version 2>/dev/null || echo "installed (version unknown)")
+    fi
+
+    if command_exists bun; then
+        bun_version=$(bun --version 2>/dev/null || echo "installed (version unknown)")
+    fi
+
     local claude_agents_count=0
     local claude_plugins_count=0
     local claude_skills_count=0
@@ -967,6 +1045,8 @@ write_version_report() {
     "gh": "${gh_version}",
     "atuin": "${atuin_version}",
     "claude": "${claude_version}",
+    "uv": "${uv_version}",
+    "bun": "${bun_version}",
     "claude_agents": ${claude_agents_count},
     "claude_plugins": ${claude_plugins_count},
     "claude_skills": ${claude_skills_count}
@@ -1050,6 +1130,12 @@ main() {
     install_claude_agents_config || warn "Claude agents config installation failed, continuing..."
     echo
 
+    install_uv || warn "uv installation failed, continuing..."
+    echo
+
+    install_bun || warn "Bun installation failed, continuing..."
+    echo
+
     echo -e "${GREEN}========================================${NC}"
     echo -e "${GREEN}   Bootstrap Complete!                 ${NC}"
     echo -e "${GREEN}========================================${NC}"
@@ -1100,6 +1186,12 @@ main() {
             echo "    skills: ${skill_count} installed"
         fi
     fi
+    if command_exists uv; then
+        echo "  - uv: $(uv --version 2>/dev/null)"
+    fi
+    if command_exists bun; then
+        echo "  - bun: $(bun --version 2>/dev/null)"
+    fi
     echo
 
     # Write version report
@@ -1132,6 +1224,14 @@ main() {
     if command_exists atuin; then
         echo "  atuin search                     - Search shell history"
         echo "  atuin stats                      - View command statistics"
+    fi
+    if command_exists uv; then
+        echo "  uv pip install <pkg>             - Install Python packages"
+        echo "  uv venv                          - Create virtual environment"
+    fi
+    if command_exists bun; then
+        echo "  bun run <script>                 - Run a script with Bun"
+        echo "  bun install                      - Install dependencies"
     fi
     echo
 
