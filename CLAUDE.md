@@ -56,8 +56,10 @@ All backup workflows follow a consistent pattern:
 - `workflows/github.py` - Clones repositories and extracts commit history using GitHub GraphQL API
 - `workflows/youtube.py` - Downloads videos via yt-dlp
 - `workflows/crunchyroll.py` - Downloads anime via multi-downloader-nx
-- `workflows/google_photos.py` - Backs up Google Photos library via OAuth2 API
 - `workflows/example.py` - Template showing basic Prefect flow structure
+
+**Cannot be automated** (in `workflows/cannot-automate/`):
+- `workflows/cannot-automate/google_photos.py` - Google deprecated Library API scopes on April 1, 2025. See README in that directory.
 
 **Workflows needing fixes** (in `workflows/to-fix/`):
 - `workflows/to-fix/twitter.py` - Downloads tweets, bookmarks, and likes with media files
