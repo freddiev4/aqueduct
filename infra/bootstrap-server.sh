@@ -13,8 +13,10 @@
 #   - Atuin shell history tool for enhanced command history
 #   - Claude Code CLI for AI-assisted development
 #   - Claude agents, plugins, and skills from freddiev4/agents repo
+#   - sync-claude-settings command for easy Claude config updates
 #   - uv Python package manager for fast dependency management
 #   - Bun JavaScript runtime for fast JS/TS execution
+#   - mas (Mac App Store CLI) and specific apps (macOS only)
 #   - Automatic Homebrew installation on macOS
 #   - VirtualBox support for older Macs
 #   - JSON version report generation
@@ -33,9 +35,11 @@
 #   8. Install Atuin shell history tool
 #   9. Install Claude Code CLI for AI-assisted development
 #  10. Install Claude agents, plugins, and skills from agents repo
-#  11. Install uv Python package manager
-#  12. Install Bun JavaScript runtime
-#  13. Generate a timestamped JSON report of installed versions
+#  11. Add sync-claude-settings command to your shell config
+#  12. Install uv Python package manager
+#  13. Install Bun JavaScript runtime
+#  14. Install mas (Mac App Store CLI) and specific apps
+#  15. Generate a timestamped JSON report of installed versions
 #
 
 set -e  # Exit on error
@@ -436,6 +440,66 @@ install_bun() {
     fi
 }
 
+# Install mas (Mac App Store CLI) and app
+install_mas() {
+    # Only install on macOS
+    if [ "$(uname -s)" != "Darwin" ]; then
+        info "Skipping mas installation (macOS only)"
+        return 0
+    fi
+
+    info "Installing mas (Mac App Store CLI)..."
+
+    # Check if mas is already installed
+    if command -v mas &> /dev/null; then
+        local current_version=$(mas version 2>/dev/null || echo "unknown")
+        warn "mas is already installed (version: ${current_version})"
+        read -p "Do you want to reinstall? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            info "Skipping mas installation"
+        fi
+    else
+        # Install mas via Homebrew
+        if ! command_exists brew; then
+            error "Homebrew is required to install mas"
+            return 1
+        fi
+
+        info "Installing mas via Homebrew..."
+        if ! brew install mas; then
+            error "Failed to install mas"
+            return 1
+        fi
+
+        # Verify installation
+        if command -v mas &> /dev/null; then
+            info "✓ mas installed successfully: $(mas version 2>/dev/null)"
+        else
+            error "mas installation failed"
+            return 1
+        fi
+    fi
+
+    # Install Mac App Store app with ID 1186187538
+    local app_id="1186187538"
+    info "Installing Mac App Store app (ID: ${app_id})..."
+
+    # Check if app is already installed
+    if mas list | grep -q "^${app_id}"; then
+        info "✓ App ${app_id} is already installed"
+    else
+        info "Installing app ${app_id}..."
+        if mas install "$app_id"; then
+            info "✓ App ${app_id} installed successfully"
+        else
+            warn "Failed to install app ${app_id}"
+            warn "You may need to sign in to the Mac App Store first with 'mas signin'"
+            return 1
+        fi
+    fi
+}
+
 # Install Claude Code
 install_claude_code() {
     info "Installing Claude Code CLI..."
@@ -664,6 +728,117 @@ install_claude_agents_config() {
     rm -rf "$clone_dir"
 
     info "✓ Claude agents configuration installed successfully"
+}
+
+# Add sync-claude-settings command to shell configuration
+setup_sync_command() {
+    info "Setting up sync-claude-settings command..."
+
+    # Determine which shell config file to use
+    local shell_config=""
+    if [ -n "$ZSH_VERSION" ] || [ -f "$HOME/.zshrc" ]; then
+        shell_config="$HOME/.zshrc"
+    elif [ -n "$BASH_VERSION" ] || [ -f "$HOME/.bashrc" ]; then
+        shell_config="$HOME/.bashrc"
+    else
+        # Default to .zshrc if neither exists
+        shell_config="$HOME/.zshrc"
+    fi
+
+    info "Using shell config: ${shell_config}"
+
+    # Check if the function already exists
+    if grep -q "sync-claude-settings()" "$shell_config" 2>/dev/null; then
+        info "✓ sync-claude-settings command already configured in ${shell_config}"
+        return 0
+    fi
+
+    # Create the sync function
+    local sync_function='
+# Sync Claude Code settings from agents repo
+sync-claude-settings() {
+    local AGENTS_REPO="git@github.com:freddiev4/agents.git"
+    local CLONE_DIR="/tmp/agents-config-$$"
+    local CLAUDE_DIR="$HOME/.claude"
+
+    echo "Syncing Claude settings from agents repo..."
+
+    # Check if git is available
+    if ! command -v git &> /dev/null; then
+        echo "Error: git is required to sync Claude settings"
+        return 1
+    fi
+
+    # Clone the agents repo to a temp directory
+    echo "Cloning agents repo..."
+    if ! git clone --depth 1 "$AGENTS_REPO" "$CLONE_DIR" 2>/dev/null; then
+        echo "Error: Failed to clone agents repo from $AGENTS_REPO"
+        echo "Make sure you have SSH access to the repository"
+        return 1
+    fi
+
+    # Create ~/.claude if it doesn'\''t exist
+    mkdir -p "$CLAUDE_DIR"
+
+    # Sync .claude/agents directory
+    if [ -d "$CLONE_DIR/.claude/agents" ]; then
+        echo "Syncing Claude agents..."
+        mkdir -p "$CLAUDE_DIR/agents"
+        rsync -a --delete "$CLONE_DIR/.claude/agents/" "$CLAUDE_DIR/agents/" 2>/dev/null || \
+            cp -r "$CLONE_DIR/.claude/agents/"* "$CLAUDE_DIR/agents/" 2>/dev/null || true
+        echo "✓ Agents synced"
+    fi
+
+    # Sync .claude/hooks directory
+    if [ -d "$CLONE_DIR/.claude/hooks" ]; then
+        echo "Syncing Claude hooks..."
+        mkdir -p "$CLAUDE_DIR/hooks"
+        rsync -a --delete "$CLONE_DIR/.claude/hooks/" "$CLAUDE_DIR/hooks/" 2>/dev/null || \
+            cp -r "$CLONE_DIR/.claude/hooks/"* "$CLAUDE_DIR/hooks/" 2>/dev/null || true
+        echo "✓ Hooks synced"
+    fi
+
+    # Sync settings.json
+    if [ -f "$CLONE_DIR/.claude/settings.json" ]; then
+        if [ -f "$CLAUDE_DIR/settings.json" ]; then
+            echo "Backing up existing settings.json..."
+            cp "$CLAUDE_DIR/settings.json" "$CLAUDE_DIR/settings.json.backup.$(date +%Y%m%d%H%M%S)"
+        fi
+        echo "Syncing Claude settings..."
+        cp "$CLONE_DIR/.claude/settings.json" "$CLAUDE_DIR/settings.json"
+        echo "✓ Settings synced"
+    fi
+
+    # Sync plugins directory
+    if [ -d "$CLONE_DIR/plugins" ]; then
+        echo "Syncing Claude plugins..."
+        mkdir -p "$CLAUDE_DIR/plugins"
+        rsync -a --delete "$CLONE_DIR/plugins/" "$CLAUDE_DIR/plugins/" 2>/dev/null || \
+            cp -r "$CLONE_DIR/plugins/"* "$CLAUDE_DIR/plugins/" 2>/dev/null || true
+        echo "✓ Plugins synced"
+    fi
+
+    # Sync skills directory
+    if [ -d "$CLONE_DIR/skills" ]; then
+        echo "Syncing Claude skills..."
+        mkdir -p "$CLAUDE_DIR/skills"
+        rsync -a --delete "$CLONE_DIR/skills/" "$CLAUDE_DIR/skills/" 2>/dev/null || \
+            cp -r "$CLONE_DIR/skills/"* "$CLAUDE_DIR/skills/" 2>/dev/null || true
+        echo "✓ Skills synced"
+    fi
+
+    # Clean up temp directory
+    rm -rf "$CLONE_DIR"
+
+    echo "✓ Claude settings synced successfully!"
+}
+'
+
+    # Append the function to the shell config file
+    echo "$sync_function" >> "$shell_config"
+
+    info "✓ sync-claude-settings command added to ${shell_config}"
+    info "  Run 'source ${shell_config}' or restart your shell to use it"
 }
 
 # Install Atuin
@@ -932,6 +1107,7 @@ write_version_report() {
     local claude_version="not installed"
     local uv_version="not installed"
     local bun_version="not installed"
+    local mas_version="not installed"
 
     # Check for Homebrew (macOS only)
     if [ "$os" = "darwin" ] && command_exists brew; then
@@ -998,6 +1174,10 @@ write_version_report() {
         bun_version=$(bun --version 2>/dev/null || echo "installed (version unknown)")
     fi
 
+    if [ "$os" = "darwin" ] && command_exists mas; then
+        mas_version=$(mas version 2>/dev/null || echo "installed (version unknown)")
+    fi
+
     local claude_agents_count=0
     local claude_plugins_count=0
     local claude_skills_count=0
@@ -1047,6 +1227,7 @@ write_version_report() {
     "claude": "${claude_version}",
     "uv": "${uv_version}",
     "bun": "${bun_version}",
+    "mas": "${mas_version}",
     "claude_agents": ${claude_agents_count},
     "claude_plugins": ${claude_plugins_count},
     "claude_skills": ${claude_skills_count}
@@ -1130,10 +1311,16 @@ main() {
     install_claude_agents_config || warn "Claude agents config installation failed, continuing..."
     echo
 
+    setup_sync_command || warn "Failed to setup sync-claude-settings command, continuing..."
+    echo
+
     install_uv || warn "uv installation failed, continuing..."
     echo
 
     install_bun || warn "Bun installation failed, continuing..."
+    echo
+
+    install_mas || warn "mas installation failed, continuing..."
     echo
 
     echo -e "${GREEN}========================================${NC}"
@@ -1192,6 +1379,9 @@ main() {
     if command_exists bun; then
         echo "  - bun: $(bun --version 2>/dev/null)"
     fi
+    if [ "$OS" = "darwin" ] && command_exists mas; then
+        echo "  - mas: $(mas version 2>/dev/null)"
+    fi
     echo
 
     # Write version report
@@ -1225,6 +1415,9 @@ main() {
         echo "  atuin search                     - Search shell history"
         echo "  atuin stats                      - View command statistics"
     fi
+    if command_exists claude; then
+        echo "  sync-claude-settings             - Sync Claude settings from agents repo"
+    fi
     if command_exists uv; then
         echo "  uv pip install <pkg>             - Install Python packages"
         echo "  uv venv                          - Create virtual environment"
@@ -1232,6 +1425,10 @@ main() {
     if command_exists bun; then
         echo "  bun run <script>                 - Run a script with Bun"
         echo "  bun install                      - Install dependencies"
+    fi
+    if [ "$OS" = "darwin" ] && command_exists mas; then
+        echo "  mas list                         - List installed Mac App Store apps"
+        echo "  mas search <app>                 - Search for apps in Mac App Store"
     fi
     echo
 
