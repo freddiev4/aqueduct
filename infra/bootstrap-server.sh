@@ -457,19 +457,67 @@ install_mas() {
         read -p "Do you want to reinstall? (y/N): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            info "Skipping mas installation"
+            info "Skipping mas reinstallation"
+        else
+            # If they want to reinstall, skip the installation and just use existing
+            info "Using existing mas installation"
         fi
     else
-        # Install mas via Homebrew
-        if ! command_exists brew; then
-            error "Homebrew is required to install mas"
-            return 1
-        fi
+        # Detect macOS version
+        local macos_version=$(sw_vers -productVersion)
+        local macos_major=$(echo "$macos_version" | cut -d '.' -f 1)
+        info "Detected macOS version: ${macos_version}"
 
-        info "Installing mas via Homebrew..."
-        if ! brew install mas; then
-            error "Failed to install mas"
-            return 1
+        # For macOS 12 and older, check for MacPorts first or install older mas version
+        if [ "$macos_major" -lt 13 ]; then
+            warn "macOS ${macos_version} detected (older than macOS 13)"
+            warn "Latest mas version requires Xcode 14.3+ which needs macOS 13+"
+            echo
+
+            # Check if MacPorts is available
+            if command_exists port; then
+                info "MacPorts detected, attempting to install mas via MacPorts..."
+                if sudo port install mas; then
+                    info "✓ mas installed successfully via MacPorts"
+                else
+                    error "Failed to install mas via MacPorts"
+                    return 1
+                fi
+            elif command_exists brew; then
+                # Try to install an older version of mas that's compatible
+                info "Attempting to install older mas version compatible with macOS ${macos_version}..."
+                info "Installing mas 1.8.6 (last version supporting macOS 12)..."
+
+                # Uninstall current formula if it exists
+                brew uninstall mas 2>/dev/null || true
+
+                # Install specific older version
+                if brew install mas@1.8.6 2>/dev/null || brew install https://raw.githubusercontent.com/Homebrew/homebrew-core/f3e8ae631b2ad5cfd5ee82e7868c409de3ed0f7f/Formula/mas.rb; then
+                    info "✓ mas installed successfully"
+                else
+                    error "Failed to install compatible mas version"
+                    warn "Consider installing MacPorts and running: sudo port install mas"
+                    warn "Or manually download mas from: https://github.com/mas-cli/mas/releases"
+                    return 1
+                fi
+            else
+                error "Neither Homebrew nor MacPorts found"
+                warn "Install MacPorts from https://www.macports.org/"
+                warn "Then run: sudo port install mas"
+                return 1
+            fi
+        else
+            # macOS 13+ - use standard Homebrew installation
+            if ! command_exists brew; then
+                error "Homebrew is required to install mas"
+                return 1
+            fi
+
+            info "Installing mas via Homebrew..."
+            if ! brew install mas; then
+                error "Failed to install mas"
+                return 1
+            fi
         fi
 
         # Verify installation
