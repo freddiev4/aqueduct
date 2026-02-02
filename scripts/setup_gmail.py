@@ -114,12 +114,14 @@ Examples:
     print("   curl -fsSL https://msgvault.io/install.sh | bash")
     print("\n2. Setup Gmail OAuth credentials:")
     print("   Follow: https://msgvault.io/guides/oauth-setup/")
-    print("\n3. Run your first backup:")
+    print("\n3. Run your first backup (headless mode for servers/automation):")
+    print(f"   python workflows/gmail.py --credentials {block_name} --max-messages 10 --headless")
+    print("\n   Or for local development (opens browser):")
     print(f"   python workflows/gmail.py --credentials {block_name} --max-messages 10")
     print("\n4. After successful test, run full backup:")
-    print(f"   python workflows/gmail.py --credentials {block_name}")
+    print(f"   python workflows/gmail.py --credentials {block_name} --headless")
     print("\n5. Schedule incremental backups:")
-    print(f"   python workflows/gmail.py --credentials {block_name} --incremental")
+    print(f"   python workflows/gmail.py --credentials {block_name} --incremental --headless")
 
 
 if __name__ == "__main__":

@@ -75,19 +75,19 @@ python blocks/gmail_block.py
 
 ### Command Line
 
-**Full backup (initial sync):**
+**Full backup (initial sync) - recommended for servers:**
 ```bash
-python workflows/gmail.py --credentials gmail-credentials
+python workflows/gmail.py --credentials gmail-credentials --headless
 ```
 
 **Incremental backup (fast, after initial sync):**
 ```bash
-python workflows/gmail.py --credentials gmail-credentials --incremental
+python workflows/gmail.py --credentials gmail-credentials --incremental --headless
 ```
 
 **Test with limited messages:**
 ```bash
-python workflows/gmail.py --credentials gmail-credentials --max-messages 100
+python workflows/gmail.py --credentials gmail-credentials --max-messages 100 --headless
 ```
 
 **Date range filtering:**
@@ -95,12 +95,13 @@ python workflows/gmail.py --credentials gmail-credentials --max-messages 100
 python workflows/gmail.py \
   --credentials gmail-credentials \
   --after 2024-01-01 \
-  --before 2024-12-31
+  --before 2024-12-31 \
+  --headless
 ```
 
-**Headless OAuth (server environment):**
+**Interactive mode (local development with browser):**
 ```bash
-python workflows/gmail.py --credentials gmail-credentials --headless
+python workflows/gmail.py --credentials gmail-credentials
 ```
 
 ### Python API
@@ -116,7 +117,7 @@ result = backup_gmail(
     max_messages=None,  # None for unlimited
     after_date="2024-01-01",  # Optional date filter
     before_date="2024-12-31",  # Optional date filter
-    headless=False,  # Use True for headless OAuth
+    headless=True,  # Recommended for servers/automation
 )
 
 print(f"Backed up to: {result['backup_dir']}")
@@ -136,6 +137,7 @@ if __name__ == "__main__":
         parameters={
             "credentials_block_name": "gmail-credentials",
             "incremental": True,
+            "headless": True,  # Required for server deployments
         },
         cron="0 2 * * *",  # Daily at 2 AM
     )
@@ -165,19 +167,31 @@ if __name__ == "__main__":
 
 msgvault supports two OAuth flows:
 
-### Interactive (Default)
-Opens browser for OAuth consent:
-```bash
-python workflows/gmail.py --credentials gmail-credentials
-```
-
-### Headless (Server Environment)
-Uses device authorization flow (displays code to enter in browser):
+### Headless (Recommended for Servers/Automation)
+Uses device authorization flow - displays a URL and code to enter in any browser:
 ```bash
 python workflows/gmail.py --credentials gmail-credentials --headless
 ```
 
-After initial OAuth, credentials are stored in `~/.msgvault/` and reused for future syncs.
+**When to use:**
+- Running on a server without a display
+- CI/CD pipelines
+- Scheduled automation workflows
+- SSH sessions
+
+The workflow will display a URL like `https://www.google.com/device` and a device code. Open this URL on any device (phone, laptop, etc.), sign in to your Gmail account, and enter the code to authorize.
+
+### Interactive (Local Development)
+Opens browser automatically for OAuth consent:
+```bash
+python workflows/gmail.py --credentials gmail-credentials
+```
+
+**When to use:**
+- Local development with a browser available
+- One-time manual backups on your workstation
+
+After initial OAuth (either method), credentials are stored in `~/.msgvault/tokens/` and reused for future syncs with automatic token refresh.
 
 ## Performance
 
