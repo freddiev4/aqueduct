@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Aqueduct is a DAG-based backup system for archiving personal data from various platforms (GitHub, Twitter/X, Instagram, Notion) to local storage (and eventually NAS). It uses Prefect as the workflow orchestration framework to schedule and manage backup tasks.
+Aqueduct is a DAG-based backup system for archiving personal data from various platforms (GitHub, Twitter/X, Instagram, Notion, Gmail) to local storage (and eventually NAS). It uses Prefect as the workflow orchestration framework to schedule and manage backup tasks.
 
 
 ## Subagents
@@ -56,6 +56,7 @@ All backup workflows follow a consistent pattern:
 - `workflows/github.py` - Clones repositories and extracts commit history using GitHub GraphQL API
 - `workflows/youtube.py` - Downloads videos via yt-dlp
 - `workflows/crunchyroll.py` - Downloads anime via multi-downloader-nx
+- `workflows/gmail.py` - Archives Gmail emails using msgvault (Go binary) with SQLite storage, full-text search, and content-addressed attachment deduplication. Supports incremental syncs via Gmail History API. See `workflows/GMAIL_README.md` for complete documentation.
 - `workflows/example.py` - Template showing basic Prefect flow structure
 
 **Cannot be automated** (in `workflows/cannot-automate/`):
@@ -81,6 +82,17 @@ All backup workflows follow a consistent pattern:
 - Detailed logging to stdout
 
 **Date Filtering**: GitHub workflow supports `until_date` parameter to enable incremental backups (only fetch data up to a specific date)
+
+**External Binary Dependencies**: Some workflows require external tools to be installed:
+- Gmail workflow requires `msgvault` binary (Go-based, installed via `curl -fsSL https://msgvault.io/install.sh | bash`)
+- YouTube workflow requires `yt-dlp`
+- Crunchyroll workflow requires `multi-downloader-nx`
+- Workflows should check for binary existence and provide clear error messages or auto-install where possible
+
+**Incremental Syncs**: Workflows should support incremental syncs for efficiency:
+- Gmail uses Gmail History API for fast incremental updates (seconds vs minutes)
+- GitHub uses `until_date` parameter to fetch only new data
+- Workflows should track last sync timestamp in metadata
 
 ## Common Tasks
 
@@ -114,6 +126,9 @@ For workflows that use Prefect integrations:
 ```bash
 # GitHub
 prefect block register -m prefect_github
+
+# Gmail (uses custom block with automated setup)
+python scripts/setup_gmail.py
 ```
 
 Then configure the block through the Prefect UI at http://localhost:4200
