@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **See [TODO.md](./TODO.md) for current implementation status and planned work.**
 
+**IMPORTANT: [README.md](./README.md) is the source of truth for all available workflows, their status, and setup instructions. Always update README.md when adding, modifying, or changing workflow status.**
+
 ## Project Overview
 
 Aqueduct is a DAG-based backup system for archiving personal data from various platforms (GitHub, Twitter/X, Instagram, Notion, Gmail) to local storage (and eventually NAS). It uses Prefect as the workflow orchestration framework to schedule and manage backup tasks.
