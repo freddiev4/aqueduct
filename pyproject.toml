@@ -1,8 +1,10 @@
 [project]
 name = "aqueduct"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.10,<3.13"
 version = "0.1.0"
 dependencies = [
+    "amazon-orders>=2.0.0",
+    "pillow>=9.0.1,<9.6.0",
     "flask>=3.0.0",
     "google-api-python-client>=2.110.0",
     "google-auth>=2.25.0",
@@ -12,9 +14,10 @@ dependencies = [
     "instaloader>=4.10",
     "notion-client>=2.2.1",
     "pdbpp>=0.11.7",
+    "praw>=7.7.1",
     "prefect[github]>=3.5.0",
     "python-dotenv>=1.2.1",
-    "requests>=2.31.0",
+    "requests>=2.27.1",
     "synology-api>=0.6.0",
     "tweepy>=4.14.0",
     "twilio>=9.0.0",

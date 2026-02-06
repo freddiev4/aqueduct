@@ -23,6 +23,23 @@ Then use the workflow-testing-agent to test the workflow.
 
 ## Development Environment
 
+### Python Version Management
+
+Use `uv` to manage Python versions:
+
+```bash
+# Install a specific Python version
+uv python install 3.12
+
+# Create venv with specific Python version
+uv venv --python 3.12
+
+# List installed Python versions
+uv python list
+```
+
+**Note**: The Amazon Orders workflow requires Python 3.12 or 3.11 due to dependency constraints (amazon-orders → amazoncaptcha → pillow<9.6.0 cannot build on Python 3.13).
+
 ### Setup Commands
 
 ```bash
@@ -61,6 +78,9 @@ All backup workflows follow a consistent pattern:
 - `workflows/github.py` - Clones repositories and extracts commit history using GitHub GraphQL API
 - `workflows/youtube.py` - Downloads videos via yt-dlp
 - `workflows/crunchyroll.py` - Downloads anime via multi-downloader-nx
+- `workflows/reddit.py` - Downloads saved posts, comments, and upvoted content using PRAW
+- `workflows/google_drive.py` - Downloads files and folders with Google Workspace exports using Drive API
+- `workflows/amazon.py` - Downloads order history (requires Python 3.12 or 3.11)
 - `workflows/example.py` - Template showing basic Prefect flow structure
 
 **Cannot be automated** (in `workflows/cannot-automate/`):
