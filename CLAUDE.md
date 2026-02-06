@@ -8,6 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Aqueduct is a DAG-based backup system for archiving personal data from various platforms (GitHub, Twitter/X, Instagram, Notion) to local storage (and eventually NAS). It uses Prefect as the workflow orchestration framework to schedule and manage backup tasks.
 
+## Creating New Workflows
+When creating a new workflow, first do research around the available APIs and ensure the following:
+
+1. The APIs are not deprecated. The Google Photos workflow for example cannot be made because of the deprecated API.
+2. The workflows are able to be automated. If the workflows require a human hand to do authentication for example like the Crunchyroll workflow, the workflow should go in to the `cannot-automate/` directory.
 
 ## Subagents
 When making new workflows, use the [workflow-builder](.claude/agents/workflow-builder.md) subagent to create the workflow.
