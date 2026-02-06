@@ -19,9 +19,11 @@ These workflows are in `workflows/to-fix/` and need updates:
 ### Planned 🔄
 - [ ] **Google Drive** - File and folder backup
   - Reference: https://developers.google.com/workspace/drive/api/quickstart/python
-- [ ] **Amazon Orders** - Order history backup
+
+### Recently Completed ✨
+- [x] **Amazon Orders** (`workflows/amazon.py`) - Order history backup
   - Reference: https://github.com/alexdlaird/amazon-orders
-- [ ] **Reddit** - Saved posts, comments, upvoted content
+- [x] **Reddit** (`workflows/reddit.py`) - Saved posts, comments, upvoted content
   - Reference: https://praw.readthedocs.io/en/stable/
 
 ## Current Work in Progress
