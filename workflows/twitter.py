@@ -474,6 +474,7 @@ def download_user_likes(
 
 @flow()
 def backup_twitter(
+    credentials_block_name: str = "twitter-credentials",
     bearer_token: Optional[str] = None,
     api_key: Optional[str] = None,
     api_secret: Optional[str] = None,
@@ -491,10 +492,12 @@ def backup_twitter(
 ):
     """Main flow to backup Twitter/X posts, bookmarks, and likes.
 
-    Authentication:
-        - For full access (tweets, bookmarks, likes): provide api_key,
-          api_secret, access_token, and access_token_secret.
-        - For public tweet access only: provide bearer_token.
+    Authentication (in order of precedence):
+        1. Explicit params: pass api_key/api_secret/access_token/access_token_secret
+           or bearer_token directly.
+        2. Prefect Block: loads credentials from the named TwitterBlock
+           (default: "twitter-credentials"). Register the block first by
+           running: python blocks/twitter_block.py
 
     Get credentials from https://developer.x.com/
     """
@@ -504,6 +507,18 @@ def backup_twitter(
         snapshot_date = snapshot_date.replace(tzinfo=timezone.utc)
     elif snapshot_date.tzinfo != timezone.utc:
         snapshot_date = snapshot_date.astimezone(timezone.utc)
+
+    # If no explicit creds provided, load from Prefect Block
+    if not any([bearer_token, api_key, api_secret, access_token, access_token_secret]):
+        from blocks.twitter_block import TwitterBlock
+
+        print(f"Loading credentials from block: {credentials_block_name}")
+        creds = TwitterBlock.load(credentials_block_name)
+        bearer_token = creds.bearer_token.get_secret_value() if creds.bearer_token else None
+        api_key = creds.api_key.get_secret_value() if creds.api_key else None
+        api_secret = creds.api_secret.get_secret_value() if creds.api_secret else None
+        access_token = creds.access_token.get_secret_value() if creds.access_token else None
+        access_token_secret = creds.access_token_secret.get_secret_value() if creds.access_token_secret else None
 
     auth_kwargs = dict(
         bearer_token=bearer_token,
@@ -558,18 +573,13 @@ def backup_twitter(
 
 
 if __name__ == "__main__":
-    # Load credentials from environment variables
+    # Credentials are loaded from env vars if set, otherwise from the
+    # "twitter-credentials" Prefect Block (register it first with:
+    #   python blocks/twitter_block.py)
     backup_twitter(
         bearer_token=os.environ.get("X_BEARER_TOKEN"),
         api_key=os.environ.get("X_API_KEY"),
         api_secret=os.environ.get("X_API_SECRET"),
         access_token=os.environ.get("X_ACCESS_TOKEN"),
         access_token_secret=os.environ.get("X_ACCESS_TOKEN_SECRET"),
-        username=None,
-        include_tweets=True,
-        include_bookmarks=True,
-        include_likes=True,
-        max_tweets=None,
-        max_bookmarks=None,
-        max_likes=None,
     )
