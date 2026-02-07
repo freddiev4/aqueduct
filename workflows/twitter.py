@@ -216,6 +216,18 @@ def _process_page(
         if max_count and count >= max_count:
             break
 
+        # Client-side temporal filter for endpoints that don't support
+        # end_time (bookmarks, likes). Skip tweets created after snapshot.
+        if snapshot_date and tweet.get("created_at"):
+            try:
+                created = datetime.fromisoformat(
+                    tweet["created_at"].replace("Z", "+00:00")
+                )
+                if created > snapshot_date:
+                    continue
+            except (ValueError, TypeError):
+                pass
+
         try:
             media_files = _download_tweet_media(tweet, media_lookup, media_path)
             tweet_data = _serialize_tweet(tweet, media_files)
@@ -347,7 +359,8 @@ def download_user_bookmarks(
 
     print(f"Starting download of bookmarks for @{username}...")
 
-    # Bookmarks endpoint does not support end_time filtering
+    # Bookmarks endpoint does not support end_time server-side;
+    # _process_page applies client-side filtering via snapshot_date.
     kwargs = dict(
         max_results=100,
         tweet_fields=TWEET_FIELDS,
@@ -365,6 +378,7 @@ def download_user_bookmarks(
             page, media_path, backup_path, client,
             bookmark_count, max_bookmarks, downloaded_bookmarks,
             label="bookmark",
+            snapshot_date=snapshot_date,
         )
 
     downloaded_bookmarks.sort(key=lambda x: x["id"])
@@ -415,7 +429,8 @@ def download_user_likes(
 
     print(f"Starting download of likes for @{username}...")
 
-    # Likes endpoint does not support end_time filtering
+    # Likes endpoint does not support end_time server-side;
+    # _process_page applies client-side filtering via snapshot_date.
     kwargs = dict(
         max_results=100,
         tweet_fields=TWEET_FIELDS,
@@ -433,6 +448,7 @@ def download_user_likes(
             page, media_path, backup_path, client,
             like_count, max_likes, downloaded_likes,
             label="like",
+            snapshot_date=snapshot_date,
         )
 
     downloaded_likes.sort(key=lambda x: x["id"])
