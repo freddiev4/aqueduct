@@ -91,14 +91,15 @@ All backup workflows follow a consistent pattern:
 ### Creating a New Backup Workflow
 
 1. Create a new file in `workflows/` following the pattern: `workflows/platform_name.py`
-2. Implement task functions for:
+2. **Create a Prefect Block** in `blocks/` if the platform doesn't already have one (e.g., `blocks/platform_block.py`). Every new service needs a credentials block that extends `prefect.blocks.core.Block` with `SecretStr` fields for tokens/keys. See `blocks/discord_block.py` or `blocks/reddit_block.py` for examples. Also add the corresponding env vars to `.env.example`.
+3. Implement task functions for:
    - Authentication/credential loading
    - Fetching data from the platform API
    - Downloading media/attachments
    - Saving structured metadata
-3. Create a main flow function that orchestrates these tasks
-4. Follow the backup directory structure: `./backups/local/platform/username/content_type/`
-5. Save a metadata summary JSON file with statistics about what was backed up
+4. Create a main flow function that orchestrates these tasks
+5. Follow the backup directory structure: `./backups/local/platform/username/content_type/`
+6. Save a metadata summary JSON file with statistics about what was backed up
 
 ### Running a Workflow Manually
 
