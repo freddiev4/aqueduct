@@ -4,6 +4,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
     ffmpeg \
+    zlib1g-dev \
+    libjpeg-dev \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
