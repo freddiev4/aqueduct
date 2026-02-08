@@ -30,7 +30,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from blocks.amazon_block import AmazonBlock
 
 try:
-    from amazon_orders import AmazonSession, AmazonOrders
+    from amazonorders.session import AmazonSession
+    from amazonorders.orders import AmazonOrders
 except ImportError:
     AmazonSession = None
     AmazonOrders = None
