@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "0c663fc2e170",
+  "session_id": "54e28fa8-61c5-49eb-8c0e-ca89686c775d",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-10T17:19:12.559974Z",
+  "branch": "freddiev4/add-linkedin-workflow",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/2026-02-10/linkedin/docs.md",
+    "docs/2026-02-10/linkedin/plan.md",
+    "docs/2026-02-10/linkedin/test_linkedin_workflow.py",
+    "docs/2026-02-10/linkedin/todo.md",
+    "workflows/cannot-automate/linkedin.py"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 68,
+    "cache_creation_tokens": 72251,
+    "cache_read_tokens": 179219,
+    "output_tokens": 2531,
+    "api_call_count": 8
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-10T17:19:12.453507Z",
+    "agent_lines": 1828,
+    "human_added": 1295,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 3123,
+    "agent_percentage": 58.5334614153058
+  }
+}
