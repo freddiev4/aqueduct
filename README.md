@@ -5,6 +5,25 @@ A repository for DAG-based backup to NAS
 
 Ensure [`uv`](https://docs.astral.sh/uv/) is installed following their [official documentation](https://docs.astral.sh/uv/getting-started/installation/).
 
+### Python Version Requirements
+
+- **Most workflows**: Python 3.10 - 3.13
+- **Amazon Orders workflow**: Python 3.12 or 3.11 only (due to `pillow` dependency constraints)
+
+To install and use Python 3.12 for the Amazon workflow:
+
+```bash
+# Install Python 3.12
+uv python install 3.12
+
+# Create venv with Python 3.12
+uv venv --python 3.12
+
+# Activate and install
+source .venv/bin/activate
+uv pip install -e .
+```
+
 ## Setup Steps
 
 1. Activate the virtual environment:
@@ -19,6 +38,19 @@ uv pip install -e .
 ```
 
 
+
+## Available Workflows
+
+Aqueduct includes several backup workflows for different platforms:
+
+- **GitHub** (`workflows/github.py`) - Clones repositories and commit history
+- **YouTube** (`workflows/youtube.py`) - Downloads videos via yt-dlp
+- **Reddit** (`workflows/reddit.py`) - Downloads saved posts, comments, upvoted content
+- **Google Drive** (`workflows/google_drive.py`) - Downloads files and folders with Google Workspace exports
+- **Amazon Orders** (`workflows/amazon.py`) - Downloads order history ⚠️ Requires Python 3.12
+- **Crunchyroll** (`workflows/crunchyroll.py`) - Downloads anime (requires manual config)
+
+See [WORKFLOW_FIXES_SUMMARY.md](docs/WORKFLOW_FIXES_SUMMARY.md) for detailed information about each workflow.
 
 ## Running Prefect
 
