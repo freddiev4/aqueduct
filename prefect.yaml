@@ -1,18 +1,7 @@
 prefect-version: "3.5.0"
 
-build:
-  - prefect_docker.deployments.steps.build_docker_image:
-      id: build-image
-      requires: prefect-docker>=0.3.1
-      image_name: localhost:5001/aqueduct-workflows
-      tag: latest
-      dockerfile: Dockerfile
-
-push:
-  - prefect_docker.deployments.steps.push_docker_image:
-      requires: prefect-docker>=0.3.1
-      image_name: "{{ build-image.image_name }}"
-      tag: "{{ build-image.tag }}"
+# Image is built and pushed via `make push` (tags with git hash + timestamp).
+# The work pool's base job template default image is used unless overridden.
 
 pull:
   - prefect.deployments.steps.set_working_directory:
@@ -23,40 +12,28 @@ deployments:
     entrypoint: workflows/github.py:backup_github_repositories
     work_pool:
       name: kubernetes-pool
-      job_variables:
-        image: "{{ build-image.image }}"
 
   - name: backup-reddit
     entrypoint: workflows/reddit.py:backup_reddit_content
     work_pool:
       name: kubernetes-pool
-      job_variables:
-        image: "{{ build-image.image }}"
 
   - name: backup-youtube
     entrypoint: workflows/youtube.py:download_youtube_video
     work_pool:
       name: kubernetes-pool
-      job_variables:
-        image: "{{ build-image.image }}"
 
   - name: backup-amazon
     entrypoint: workflows/amazon.py:backup_amazon_orders
     work_pool:
       name: kubernetes-pool
-      job_variables:
-        image: "{{ build-image.image }}"
-
-  - name: backup-google-drive
-    entrypoint: workflows/google_drive.py:backup_google_drive
-    work_pool:
-      name: kubernetes-pool
-      job_variables:
-        image: "{{ build-image.image }}"
 
   - name: backup-crunchyroll
     entrypoint: workflows/crunchyroll.py:backup_crunchyroll_series
     work_pool:
       name: kubernetes-pool
-      job_variables:
-        image: "{{ build-image.image }}"
+
+  - name: backup-google-drive
+    entrypoint: workflows/google_drive.py:backup_google_drive
+    work_pool:
+      name: kubernetes-pool

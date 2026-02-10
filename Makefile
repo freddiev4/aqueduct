@@ -1,10 +1,12 @@
 .PHONY: cluster-up cluster-down build push deploy port-forward-prefect port-forward-argocd \
-       register-blocks create-work-pool setup argocd-deploy argocd-password \
-       logs-worker logs-server test-registry
+       register-blocks create-work-pool set-image setup argocd-deploy argocd-password \
+       logs-worker logs-server test-registry status
 
 REGISTRY := localhost:5001
 IMAGE := $(REGISTRY)/aqueduct-workflows
-TAG := latest
+GIT_HASH := $(shell git rev-parse --short HEAD)
+TIMESTAMP := $(shell date +%Y%m%d%H%M%S)
+TAG := $(GIT_HASH)-$(TIMESTAMP)
 PREFECT_API := http://localhost:4200/api
 
 # === Cluster Lifecycle ===
@@ -18,10 +20,12 @@ cluster-down:
 # === Image Build & Push ===
 
 build:
-	docker build -t $(IMAGE):$(TAG) .
+	docker build -t $(IMAGE):$(TAG) -t $(IMAGE):latest .
 
 push: build
 	docker push $(IMAGE):$(TAG)
+	docker push $(IMAGE):latest
+	@echo "Pushed $(IMAGE):$(TAG)"
 
 test-registry:
 	@echo "Checking registry catalog..."
@@ -54,12 +58,25 @@ register-blocks:
 	PREFECT_API_URL=$(PREFECT_API) python scripts/setup_amazon_block.py
 	PREFECT_API_URL=$(PREFECT_API) python scripts/setup_google_drive_block.py
 
+set-image:
+	@echo "Setting work pool default image to $(IMAGE):$(TAG)..."
+	@python3 -c "\
+	import json, urllib.request; \
+	pool = json.load(urllib.request.urlopen('$(PREFECT_API)/work_pools/kubernetes-pool')); \
+	t = pool['base_job_template']; \
+	t['variables']['properties']['image']['default'] = '$(IMAGE):$(TAG)'; \
+	req = urllib.request.Request('$(PREFECT_API)/work_pools/kubernetes-pool', \
+	    data=json.dumps({'base_job_template': t}).encode(), \
+	    headers={'Content-Type': 'application/json'}, method='PATCH'); \
+	urllib.request.urlopen(req); \
+	print('Done: $(IMAGE):$(TAG)')"
+
 deploy:
-	PREFECT_API_URL=$(PREFECT_API) prefect --no-prompt deploy --all
+	PREFECT_API_URL=$(PREFECT_API) prefect deploy --all
 
 # === Full Post-Cluster Setup ===
 
-setup: push create-work-pool register-blocks deploy
+setup: push set-image register-blocks deploy
 	@echo ""
 	@echo "=== Aqueduct fully deployed to Kind cluster ==="
 	@echo "Prefect UI: http://localhost:4200 (run 'make port-forward-prefect' first)"
