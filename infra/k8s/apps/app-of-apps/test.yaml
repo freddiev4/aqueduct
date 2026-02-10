@@ -1,18 +1,40 @@
-# Test environment configuration
-# Add Helm repositories here
+# Test/local environment configuration
 repos:
-  # - name: prometheus-community
-  #   url: https://prometheus-community.github.io/helm-charts
+  - name: prefect
+    url: https://prefecthq.github.io/prefect-helm
 
-# Add applications here
 apps:
-  # Example: Common manifests
-  # - name: common-manifests
-  #   path: infra/k8s/apps/common/test-manifests
-  #   recursive: true
+  # Prefect Server (self-hosted with PostgreSQL)
+  - name: prefect-server
+    chart: prefect-server
+    repoURL: https://prefecthq.github.io/prefect-helm
+    targetRevision: "2026.2.5193506"
+    namespace: prefect
+    values: |
+      server:
+        basicAuth:
+          enabled: false
+        uiConfig:
+          prefectUiApiUrl: http://localhost:4200/api
+      postgresql:
+        enabled: true
+        auth:
+          password: "aqueduct-dev-password"
+        primary:
+          persistence:
+            enabled: true
+            size: 5Gi
 
-  # Example: Local Helm chart with test values
-  # - name: my-service
-  #   path: infra/k8s/apps/my-service
-  #   namespace: default
-  #   valueFile: values-test.yaml
+  # Prefect Worker (polls kubernetes-pool, creates Jobs)
+  - name: prefect-worker
+    chart: prefect-worker
+    repoURL: https://prefecthq.github.io/prefect-helm
+    targetRevision: "2026.2.5193506"
+    namespace: prefect
+    values: |
+      worker:
+        apiConfig: selfHostedServer
+        config:
+          workPool: kubernetes-pool
+        selfHostedServerApiConfig:
+          apiUrl: http://prefect-server.prefect.svc.cluster.local:4200/api

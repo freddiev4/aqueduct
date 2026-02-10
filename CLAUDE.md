@@ -22,6 +22,23 @@ Then use the workflow-testing-agent to test the workflow.
 
 ## Development Environment
 
+### Python Version Management
+
+Use `uv` to manage Python versions:
+
+```bash
+# Install a specific Python version
+uv python install 3.12
+
+# Create venv with specific Python version
+uv venv --python 3.12
+
+# List installed Python versions
+uv python list
+```
+
+**Note**: The Amazon Orders workflow requires Python 3.12 or 3.11 due to dependency constraints (amazon-orders → amazoncaptcha → pillow<9.6.0 cannot build on Python 3.13).
+
 ### Setup Commands
 
 ```bash
@@ -61,6 +78,9 @@ All backup workflows follow a consistent pattern:
 - `workflows/twitter.py` - Downloads tweets, bookmarks, and likes with media files using the X API v2 (xdk SDK)
 - `workflows/youtube.py` - Downloads videos via yt-dlp
 - `workflows/crunchyroll.py` - Downloads anime via multi-downloader-nx
+- `workflows/reddit.py` - Downloads saved posts, comments, and upvoted content using PRAW
+- `workflows/google_drive.py` - Downloads files and folders with Google Workspace exports using Drive API
+- `workflows/amazon.py` - Downloads order history (requires Python 3.12 or 3.11)
 - `workflows/example.py` - Template showing basic Prefect flow structure
 
 **Cannot be automated** (in `workflows/cannot-automate/`):
@@ -91,14 +111,15 @@ All backup workflows follow a consistent pattern:
 ### Creating a New Backup Workflow
 
 1. Create a new file in `workflows/` following the pattern: `workflows/platform_name.py`
-2. Implement task functions for:
+2. **Create a Prefect Block** in `blocks/` if the platform doesn't already have one (e.g., `blocks/platform_block.py`). Every new service needs a credentials block that extends `prefect.blocks.core.Block` with `SecretStr` fields for tokens/keys. See `blocks/discord_block.py` or `blocks/reddit_block.py` for examples. Also add the corresponding env vars to `.env.example`.
+3. Implement task functions for:
    - Authentication/credential loading
    - Fetching data from the platform API
    - Downloading media/attachments
    - Saving structured metadata
-3. Create a main flow function that orchestrates these tasks
-4. Follow the backup directory structure: `./backups/local/platform/username/content_type/`
-5. Save a metadata summary JSON file with statistics about what was backed up
+4. Create a main flow function that orchestrates these tasks
+5. Follow the backup directory structure: `./backups/local/platform/username/content_type/`
+6. Save a metadata summary JSON file with statistics about what was backed up
 
 ### Running a Workflow Manually
 

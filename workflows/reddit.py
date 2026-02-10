@@ -281,7 +281,7 @@ def extract_submission_data(submission: "Submission") -> dict:
         data["media_type"] = "gallery"
         # Extract gallery URLs
         gallery_urls = []
-        if hasattr(submission, "media_metadata"):
+        if hasattr(submission, "media_metadata") and hasattr(submission, "gallery_data") and submission.gallery_data:
             for item_id in submission.gallery_data["items"]:
                 media_id = item_id["media_id"]
                 media_info = submission.media_metadata[media_id]
@@ -337,7 +337,6 @@ def extract_comment_data(comment: "Comment") -> dict:
     return data
 
 
-@task(cache_policy=NO_CACHE)
 def download_media(
     item: dict,
     media_dir: Path,
@@ -481,7 +480,7 @@ def save_items_to_disk(
     items_data = {
         "snapshot_date": snapshot_date.isoformat(),
         "snapshot_date_str": snapshot_str,
-        "backup_timestamp": datetime.now(timezone.utc).isoformat(),
+        "backup_timestamp": snapshot_date.isoformat(),
         "username": username,
         "content_type": content_type,
         "item_count": len(items),

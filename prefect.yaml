@@ -1,0 +1,39 @@
+prefect-version: "3.5.0"
+
+# Image is built and pushed via `make push` (tags with git hash + timestamp).
+# The work pool's base job template default image is used unless overridden.
+
+pull:
+  - prefect.deployments.steps.set_working_directory:
+      directory: /app
+
+deployments:
+  - name: backup-github
+    entrypoint: workflows/github.py:backup_github_repositories
+    work_pool:
+      name: kubernetes-pool
+
+  - name: backup-reddit
+    entrypoint: workflows/reddit.py:backup_reddit_content
+    work_pool:
+      name: kubernetes-pool
+
+  - name: backup-youtube
+    entrypoint: workflows/youtube.py:download_youtube_video
+    work_pool:
+      name: kubernetes-pool
+
+  - name: backup-amazon
+    entrypoint: workflows/amazon.py:backup_amazon_orders
+    work_pool:
+      name: kubernetes-pool
+
+  - name: backup-crunchyroll
+    entrypoint: workflows/crunchyroll.py:backup_crunchyroll_series
+    work_pool:
+      name: kubernetes-pool
+
+  - name: backup-google-drive
+    entrypoint: workflows/google_drive.py:backup_google_drive
+    work_pool:
+      name: kubernetes-pool
