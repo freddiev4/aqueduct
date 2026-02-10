@@ -49,6 +49,10 @@ source .venv/bin/activate
 uv pip install -e .
 ```
 
+## Code Style
+
+All imports must be at the top of a given file. Do not import libraries inside of functions, classes, etc.
+
 ### Running Prefect Server
 
 Start the Prefect UI and server using Docker:
