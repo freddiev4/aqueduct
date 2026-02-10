@@ -139,3 +139,144 @@ Since the user specifically asked about dumping texts:
 - [Apple Data & Privacy Portal](https://privacy.apple.com/)
 - [iCloud throttling — The Eclectic Light Company](https://eclecticlight.co/2024/02/22/icloud-does-throttle-data-syncing-after-all/)
 - [Apple CloudKit Developer Documentation](https://developer.apple.com/icloud/cloudkit/)
+
+## LinkedIn (`linkedin.py`)
+
+**Status:** Cannot fully automate (researched February 2026)
+
+### Summary
+
+LinkedIn removed public API access in 2015. Current APIs require LinkedIn Partner approval which is not available to individual users. The only way to obtain your LinkedIn data is through their manual GDPR-compliant data export feature, which takes 24 hours to process and requires manual download.
+
+### Why This Can't Be Automated
+
+1. **No Public API Access**: LinkedIn shut down public API access in 2015. Current APIs are only available to approved LinkedIn Partners.
+
+2. **Restricted API Scopes**: Even with partnership, APIs for personal data (profile, connections, messages) are heavily restricted to prevent spam and protect user privacy.
+
+3. **Manual Export Only**: LinkedIn's data export feature requires:
+   - Manual initiation from Settings & Privacy
+   - 24-hour processing time
+   - Manual download from email link (expires in 72 hours)
+   - No API endpoint to automate the request or download
+
+4. **Unofficial Methods Violate ToS**: Libraries like `linkedin-api` (uses internal Voyager API) and Selenium automation explicitly violate LinkedIn's Terms of Service and risk account suspension.
+
+5. **Advanced Anti-Bot Detection**: LinkedIn employs sophisticated fingerprinting, behavioral detection, and email verification to block automated access.
+
+### What This Workflow Does
+
+Since full automation isn't possible, this workflow provides **post-download processing**:
+
+1. **Accepts a downloaded LinkedIn export ZIP file** (manually obtained)
+2. **Extracts and validates** the ZIP contents
+3. **Parses all CSV files** (Profile, Connections, Messages, Posts, Reactions, Endorsements, etc.)
+4. **Organizes data** into searchable JSON format
+5. **Creates metadata** for easy querying
+6. **Archives original files** for reference
+
+### Directory Structure
+
+```
+./backups/local/linkedin/
+  {username}/
+    exports/
+      {YYYY-MM-DD}/
+        original/              # Archived original CSV/JSON files
+          Profile.csv
+          Connections.csv
+          Messages.csv
+          ...
+        processed/             # Parsed and organized JSON files
+          profile.json
+          connections.json
+          messages.json
+          posts.json
+          reactions.json
+          endorsements.json
+          csv_index.json      # Index of all CSV files found
+        metadata.json         # Export metadata and summary
+```
+
+### How to Use
+
+1. **Request LinkedIn Data Export**:
+   - Go to Settings & Privacy > Data Privacy > "Get a copy of your data"
+   - Select "Fast" (selected data) or "Complete" (full archive)
+   - Choose data types (recommend selecting all)
+   - Click "Request archive"
+
+2. **Wait for Email**: LinkedIn will email you when the export is ready (typically within 24 hours)
+
+3. **Download ZIP File**: Click the link in the email to download (link expires in 72 hours)
+
+4. **Run Workflow**:
+   ```python
+   from workflows.cannot_automate.linkedin import process_linkedin_export
+   from pathlib import Path
+
+   result = process_linkedin_export(
+       zip_path=Path("./path/to/linkedin_export.zip"),
+       export_date=None,  # Auto-uses today's date
+       username=None,     # Auto-detected from export
+   )
+   ```
+
+5. **Access Processed Data**: Find your organized data in `./backups/local/linkedin/{username}/exports/{date}/`
+
+### Data Types Supported
+
+The workflow automatically detects and processes all available CSV files, including:
+
+- **Profile Information**: Basic profile data, headline, summary
+- **Connections**: All 1st-degree connections with connection dates
+- **Messages**: Complete message history
+- **Posts & Shares**: Your published content
+- **Reactions**: Posts/comments you've reacted to
+- **Comments**: Your comment history
+- **Endorsements**: Given and received skill endorsements
+- **Recommendations**: Given and received recommendations
+- **Invitations**: Sent and received connection invitations
+- **Contacts**: Contact list (if available)
+- **Articles**: Published long-form articles
+- **Learning**: Completed LinkedIn Learning courses
+- **Job Applications**: Saved answers and application history
+
+The workflow also creates a comprehensive CSV index for any files not explicitly processed.
+
+### Scheduling Regular Backups
+
+While the download is manual, you can set up reminders:
+
+1. **Calendar Reminder**: Set monthly/quarterly reminders to request LinkedIn export
+2. **Process Immediately**: Run the workflow script as soon as you download the ZIP
+3. **Track History**: The workflow preserves all exports by date, allowing you to track changes over time
+
+### Alternatives Considered
+
+| Method | Automated? | Issues |
+|--------|-----------|--------|
+| **Official LinkedIn APIs** | No | Requires partnership approval, not available to individuals |
+| **Member Portability APIs** | No | GDPR-compliant but still requires partnership + manual consent |
+| **linkedin-api (PyPI)** | Yes | Violates ToS, uses internal Voyager API, risk of account ban |
+| **Selenium Automation** | Semi | Triggers email verification, detected as bot, violates ToS |
+| **Manual Export + Processing** | Semi | ✓ ToS compliant, reliable, this is what we implement |
+
+### Why Manual Export Is Actually Good
+
+1. **ToS Compliant**: Uses LinkedIn's official data export feature
+2. **Complete Data**: Gets everything LinkedIn has on you
+3. **No Account Risk**: Zero risk of suspension or ban
+4. **Reliable**: Not affected by LinkedIn's API changes or anti-bot measures
+5. **GDPR Compliant**: LinkedIn is legally required to provide this
+6. **Quality Controlled**: LinkedIn ensures data completeness and accuracy
+
+### References
+
+- [Download your account data | LinkedIn Help](https://www.linkedin.com/help/linkedin/answer/a1339364/downloading-your-account-data)
+- [LinkedIn API Products](https://developer.linkedin.com/product-catalog)
+- [Getting Access to LinkedIn APIs](https://learn.microsoft.com/en-us/linkedin/shared/authentication/getting-access)
+- [LinkedIn Posts API Documentation](https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api?view=li-lms-2026-01)
+- [How to Download Your LinkedIn Data Archive](https://blog.closelyhq.com/how-to-download-your-linkedin-data-archive/)
+- [LinkedIn Data Export - Typing Post](https://typingpost.com/blog/linkedin-data-export/)
+- [linkedin-api · PyPI](https://pypi.org/project/linkedin-api/) (unofficial, not recommended)
