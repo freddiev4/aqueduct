@@ -6,14 +6,18 @@ This directory contains backup workflows for various platforms. Each workflow is
 
 | Workflow | Status | Description |
 |----------|--------|-------------|
-| [Google Photos](#google-photos) | Working | Backup photos and videos from Google Photos |
 | [GitHub](#github) | Working | Backup repositories and commit history |
+| [Twitter/X](#twitterx) | Working | Backup tweets, bookmarks, and likes with media |
 | [YouTube](#youtube) | Working | Download YouTube videos (Twilio SMS trigger) |
 | [Crunchyroll](#crunchyroll) | Working (requires auth) | Download anime from Crunchyroll |
+| [Reddit](#reddit) | Working | Backup saved posts, comments, and upvoted content |
+| [Google Drive](#google-drive) | Working | Download files and folders with Workspace exports |
+| [Amazon](#amazon) | Working (Python 3.12/3.11) | Download order history |
+| [Discord](#discord) | Working | Backup messages, attachments, and metadata |
 | [Example](#example) | Template | Basic Prefect flow reference |
+| `cannot-automate/google_photos.py` | Cannot automate | Google deprecated Library API scopes April 1, 2025 |
 | `to-fix/instagram.py` | Broken | Needs repair |
 | `to-fix/notion.py` | Broken | Needs repair |
-| `to-fix/twitter.py` | Broken | Needs repair |
 
 ---
 
@@ -141,45 +145,6 @@ download_youtube_video.deploy(
 
 ---
 
-## Google Photos
-
-**File:** `google_photos.py`
-
-Backs up photos and videos from your Google Photos library with full metadata preservation.
-
-### Setup
-
-See [docs/GOOGLE_PHOTOS_SETUP.md](../docs/GOOGLE_PHOTOS_SETUP.md) for detailed setup instructions.
-
-**Quick setup:**
-1. Create a Google Cloud project and enable the Photos Library API
-2. Create OAuth2 credentials (Desktop app type)
-3. Download credentials JSON and set `GOOGLE_PHOTOS_CREDENTIALS_PATH` in `.env`
-4. Register the Prefect block: `python blocks/google_photos_block.py`
-
-### Caveats / Notes
-
-- **OAuth Consent Screen:** Your app will be in "Testing" mode until verified by Google
-  - Add test users at: `https://console.cloud.google.com/auth/audience?project=YOUR_PROJECT_ID`
-  - Add scopes at: `https://console.cloud.google.com/auth/scopes?project=YOUR_PROJECT_ID`
-- **403 access_denied:** The account trying to authorize isn't added as a test user
-- **400 malformed request:** Usually means the Photos Library API isn't enabled or scopes aren't configured
-- **First run:** Will open a browser for OAuth authorization; subsequent runs use cached token at `~/.google-photos-tokens/token.json`
-- **Idempotency:** Snapshots are date-segmented; re-running on the same day skips already-downloaded items
-
-### Usage
-
-```bash
-# Test with 1 photo
-python workflows/google_photos.py
-
-# In code (download all)
-from workflows.google_photos import backup_google_photos
-backup_google_photos(max_items=None)
-```
-
----
-
 ## GitHub
 
 **File:** `github.py`
@@ -202,6 +167,169 @@ Backs up repositories and commit history using the GitHub GraphQL API.
 
 ```bash
 python workflows/github.py
+```
+
+---
+
+## Twitter/X
+
+**File:** `twitter.py`
+
+Downloads tweets, bookmarks, and likes with media files using the X API v2 (xdk SDK).
+
+### Setup
+
+1. Create a Twitter/X Developer account and app at https://developer.x.com
+2. Generate OAuth 2.0 credentials with read permissions
+3. Set the following in `.env`:
+   ```
+   TWITTER_CLIENT_ID=your_client_id
+   TWITTER_CLIENT_SECRET=your_client_secret
+   TWITTER_REDIRECT_URI=http://localhost:8080/callback
+   ```
+4. Register the Prefect block: `python blocks/twitter_block.py`
+
+### Caveats / Notes
+
+- Uses OAuth 2.0 PKCE flow for authentication
+- First run opens browser for authorization
+- Saves tokens at `~/.twitter-tokens/token.json` for subsequent runs
+- Downloads all media (photos, videos) associated with tweets
+- Preserves full tweet metadata in JSON format
+
+### Usage
+
+```bash
+python workflows/twitter.py
+```
+
+---
+
+## Reddit
+
+**File:** `reddit.py`
+
+Downloads saved posts, comments, and upvoted content using PRAW (Python Reddit API Wrapper).
+
+### Setup
+
+1. Create a Reddit app at https://www.reddit.com/prefs/apps
+   - App type: "script"
+   - Redirect URI: http://localhost:8080
+2. Set the following in `.env`:
+   ```
+   REDDIT_CLIENT_ID=your_client_id
+   REDDIT_CLIENT_SECRET=your_client_secret
+   REDDIT_USER_AGENT=aqueduct-backup/1.0
+   REDDIT_USERNAME=your_username
+   REDDIT_PASSWORD=your_password
+   ```
+3. Register the Prefect block: `python blocks/reddit_block.py`
+
+### Caveats / Notes
+
+- Downloads saved posts, saved comments, and upvoted posts
+- Saves media files (images, videos) alongside metadata
+- Uses date-segmented directories for organization
+- Implements rate limiting to avoid Reddit API throttling
+
+### Usage
+
+```bash
+python workflows/reddit.py
+```
+
+---
+
+## Google Drive
+
+**File:** `google_drive.py`
+
+Downloads files and folders with Google Workspace exports using the Drive API.
+
+### Setup
+
+1. Create a Google Cloud project and enable the Drive API
+2. Create OAuth2 credentials (Desktop app type)
+3. Download credentials JSON and set `GOOGLE_DRIVE_CREDENTIALS_PATH` in `.env`
+4. Register the Prefect block: `python blocks/google_drive_block.py`
+
+### Caveats / Notes
+
+- Exports Google Workspace files (Docs, Sheets, Slides) to standard formats
+- First run opens browser for OAuth authorization
+- Tokens cached at `~/.google-drive-tokens/token.json`
+- Preserves folder structure
+- Date-segmented backups for idempotency
+
+### Usage
+
+```bash
+python workflows/google_drive.py
+```
+
+---
+
+## Amazon
+
+**File:** `amazon.py`
+
+Downloads order history from Amazon.
+
+### Setup
+
+**Important:** Requires Python 3.12 or 3.11 due to dependency constraints (amazon-orders → amazoncaptcha → pillow<9.6.0 cannot build on Python 3.13).
+
+1. Install with compatible Python version:
+   ```bash
+   uv venv --python 3.12
+   source .venv/bin/activate
+   uv pip install -e .
+   ```
+2. Set Amazon credentials in `.env`:
+   ```
+   AMAZON_EMAIL=your_email
+   AMAZON_PASSWORD=your_password
+   ```
+3. Register the Prefect block: `python blocks/amazon_block.py`
+
+### Caveats / Notes
+
+- May require CAPTCHA solving on first run
+- Downloads order details and metadata
+- Preserves order history in structured JSON format
+
+### Usage
+
+```bash
+python workflows/amazon.py
+```
+
+---
+
+## Discord
+
+**File:** `discord.py`
+
+Backs up Discord messages, attachments, and metadata.
+
+### Setup
+
+1. Get your Discord user token (see instructions in `discord.py`)
+2. Set `DISCORD_TOKEN` in `.env`
+3. Register the Prefect block: `python blocks/discord_block.py`
+
+### Caveats / Notes
+
+- Backs up messages from specified channels
+- Downloads all attachments (images, videos, files)
+- Preserves message metadata and thread structure
+- Rate-limited to respect Discord API limits
+
+### Usage
+
+```bash
+python workflows/discord.py
 ```
 
 ---
@@ -338,6 +466,20 @@ python workflows/example.py
 
 ---
 
+## Cannot Automate
+
+### Google Photos
+
+**File:** `cannot-automate/google_photos.py`
+
+**Status:** Cannot be automated as of April 1, 2025
+
+Google deprecated the Photos Library API scopes required for programmatic backup. The API now only supports limited read access for approved applications.
+
+See `workflows/cannot-automate/README.md` for details.
+
+---
+
 ## Backup Directory Structure
 
 All backups are stored in `./backups/local/`:
@@ -348,8 +490,27 @@ backups/local/
 │   └── {username}/
 │       └── repositories/
 │           └── {date}/
-├── google_photos/
+├── twitter/
+│   └── {username}/
+│       └── {date}/
+│           ├── tweets/
+│           ├── bookmarks/
+│           └── likes/
+├── reddit/
+│   └── {username}/
+│       └── {date}/
+│           ├── saved_posts/
+│           ├── saved_comments/
+│           └── upvoted/
+├── google_drive/
 │   └── {email}/
+│       └── {date}/
+├── amazon/
+│   └── {email}/
+│       └── orders/
+│           └── {date}/
+├── discord/
+│   └── {username}/
 │       └── {date}/
 ├── youtube/
 │   ├── videos/
@@ -364,9 +525,21 @@ backups/local/
 
 ## Creating a New Workflow
 
-1. Create a new file: `workflows/platform_name.py`
-2. Implement tasks with `@task` decorator for granular operations
-3. Create a main flow with `@flow` decorator
-4. Follow the backup directory structure: `./backups/local/platform/username/content_type/`
-5. Save metadata as JSON for future querying
-6. Add documentation to this README and create a setup doc in `docs/` if needed
+**Before starting, research the platform's APIs:**
+1. Ensure the APIs are not deprecated (e.g., Google Photos API was deprecated April 1, 2025)
+2. Verify the workflow can be fully automated without manual intervention
+3. If manual steps are required (e.g., CAPTCHA, manual auth), place in `cannot-automate/` directory
+
+**Development process:**
+1. Use the workflow-builder agent to create the initial workflow (see `.claude/agents/workflow-builder.md`)
+2. Create a credentials block in `blocks/` that extends `prefect.blocks.core.Block` with `SecretStr` fields
+3. Add corresponding environment variables to `.env.example`
+4. Implement the workflow following these patterns:
+   - Use `@task` decorator for granular operations (auth, API calls, downloads, processing)
+   - Create a main `@flow` decorated function to orchestrate tasks
+   - Follow backup structure: `./backups/local/platform/username/content_type/`
+   - Save metadata as JSON for future querying
+   - Use `cache_policy=NO_CACHE` to ensure fresh data
+5. Use the idempotency-guardian agent to ensure the workflow is idempotent
+6. Use the workflow-testing-agent to test the workflow end-to-end
+7. Add documentation to this README with setup instructions, caveats, and usage examples
