@@ -18,14 +18,15 @@ class GitHubBlock(Block):
     token: SecretStr
 
 
-token = os.environ["GITHUB_TOKEN"]
-block_name = "github-credentials"
+if __name__ == "__main__":
+    token = os.environ["GITHUB_TOKEN"]
+    block_name = "github-credentials"
 
-block_id = GitHubBlock(
-    token=token,
-).save(
-    block_name,
-    overwrite=True,
-)
+    block_id = GitHubBlock(
+        token=token,
+    ).save(
+        block_name,
+        overwrite=True,
+    )
 
-print(f"GitHub block saved. Name: {block_name}, ID: {block_id}")
+    print(f"GitHub block saved. Name: {block_name}, ID: {block_id}")

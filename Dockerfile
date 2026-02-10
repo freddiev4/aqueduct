@@ -7,7 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     libjpeg-dev \
     gcc \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && git config --global --add safe.directory '*'
 
 WORKDIR /app
 
