@@ -2,6 +2,81 @@
 
 GitOps-based Kubernetes deployment using ArgoCD and Helm charts. Works with both cloud-managed Kubernetes (EKS, GKE, AKS) and local clusters (Kind, Minikube).
 
+```mermaid
+  graph TB                                                                                                                                                                                 
+      subgraph NS_ArgoCD["namespace: argocd"]
+          ArgoCD[ArgoCD Server]
+          AppOfApps[App-of-Apps Helm Release]
+          ArgoCD --> AppOfApps
+      end
+
+      subgraph NS_Prefect["namespace: prefect"]
+          PrefectServer[Prefect Server v3.6.16]
+          PostgreSQL[PostgreSQL]
+          PrefectWorker[Prefect Worker]
+          PrefectServer --- PostgreSQL
+          PrefectWorker -->|polls kubernetes-pool| PrefectServer
+      end
+
+      subgraph NS_Default["namespace: default"]
+          Job1[Job Pod - backup-github]
+          Job2[Job Pod - backup-reddit]
+          Job3[Job Pod - backup-youtube]
+          JobN[Job Pod - ...]
+      end
+
+      subgraph Infra[Local Infrastructure]
+          Registry[Local Registry localhost:5001]
+          NodeMount[hostPath /data/backups]
+          BackupDir[~/aqueduct-backups]
+      end
+
+      subgraph DevTools[Developer Workflow]
+          Makefile[Makefile]
+          Workflows[workflows/*.py]
+          Dockerfile[Dockerfile]
+      end
+
+      subgraph APIs[External APIs]
+          GitHub[GitHub API]
+          Reddit[Reddit API]
+          YouTube[YouTube yt-dlp]
+          Amazon[Amazon Orders]
+          GDrive[Google Drive API]
+      end
+
+      AppOfApps -->|syncs Helm charts| PrefectServer
+      AppOfApps -->|syncs Helm charts| PrefectWorker
+
+      PrefectWorker -->|creates K8s Jobs| Job1
+      PrefectWorker -->|creates K8s Jobs| Job2
+      PrefectWorker -->|creates K8s Jobs| Job3
+      PrefectWorker -->|creates K8s Jobs| JobN
+
+      Registry -.->|image pull| Job1
+      Registry -.->|image pull| Job2
+      Registry -.->|image pull| Job3
+
+      Job1 -->|status| PrefectServer
+      Job2 -->|status| PrefectServer
+
+      Job1 -->|write backups| NodeMount
+      Job2 -->|write backups| NodeMount
+      Job3 -->|write backups| NodeMount
+      NodeMount -->|Kind extraMounts| BackupDir
+
+      Job1 --> GitHub
+      Job2 --> Reddit
+      Job3 --> YouTube
+
+      Workflows -->|baked into| Dockerfile
+      Dockerfile -->|make push| Registry
+      Makefile -->|make set-image| PrefectServer
+      Makefile -->|make deploy| PrefectServer
+
+      PrefectServer -.->|Prefect Blocks credentials| Job1
+```
+
 ## Table of Contents
 
 - [Directory Structure](#directory-structure)
