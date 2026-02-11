@@ -1,155 +1,59 @@
 # CLAUDE.md
 
-## Project Overview
+Aqueduct is a DAG-based backup system for archiving personal data from various platforms (GitHub, Twitter/X, Instagram, Notion) to local storage. It uses Prefect for workflow orchestration.
 
-Aqueduct is a DAG-based backup system for archiving personal data from various platforms (GitHub, Twitter/X, Instagram, Notion) to local storage (and eventually NAS). It uses Prefect as the workflow orchestration framework to schedule and manage backup tasks.
+## Rules
+
+- All imports must be at the top of a given file. Do not import libraries inside of functions, classes, etc.
+- Use `uv` for Python version management and dependency installation.
+- When changes are made to `infra/bootstrap-server.sh`, always update `infra/README.md`.
 
 ## Creating New Workflows
-When creating a new workflow, first do research around the available APIs and ensure the following:
 
-1. The APIs are not deprecated. The Google Photos workflow for example cannot be made because of the deprecated API.
-2. The workflows are able to be automated. If the workflows require a human hand to do authentication for example like the Crunchyroll workflow, the workflow should go in to the `cannot-automate/` directory.
+When creating a new workflow, first research the available APIs and ensure:
 
-## Infrastructure
-When changes are made to the 'bootstrap-server` infrastructure script, always update the `infra/README.md` to ensure it accurately reflects what the script does.
+1. The APIs are not deprecated. (e.g., Google Photos API was deprecated — see `docs/google-photos/`)
+2. The workflows can be automated. If manual auth is required, the workflow goes in `workflows/cannot-automate/`.
 
-## Subagents
-When making new workflows, use the [workflow-builder](.claude/agents/workflow-builder.md) subagent to create the workflow.
+Use the [workflow-builder](.claude/agents/workflow-builder.md) subagent, then the idempotency agent, then the workflow-testing-agent.
 
-Then use the idempotency agent to ensure the workflow is idempotent.
+## Documentation
 
-Then use the workflow-testing-agent to test the workflow.
+Documentation for new features should go in `docs/<feature>/` (no date prefix). See [docs/](#docs-map) below for existing documentation.
 
-## Development Environment
-
-### Python Version Management
-
-Use `uv` to manage Python versions:
+## Quick Reference
 
 ```bash
-# Install a specific Python version
-uv python install 3.12
-
-# Create venv with specific Python version
-uv venv --python 3.12
-
-# List installed Python versions
-uv python list
+source .venv/bin/activate          # Activate venv
+uv pip install -e .                # Install dependencies
+python workflows/<platform>.py     # Run a workflow
 ```
 
-**Note**: The Amazon Orders workflow requires Python 3.12 or 3.11 due to dependency constraints (amazon-orders → amazoncaptcha → pillow<9.6.0 cannot build on Python 3.13).
+Amazon workflow requires Python 3.12 or 3.11 (`uv venv --python 3.12`).
 
-### Setup Commands
+## Docs Map
 
-```bash
-# Activate virtual environment
-source .venv/bin/activate
+**Development & Architecture:**
+- [Development Guide](docs/development.md) — setup, running workflows, creating new ones
+- [Architecture](docs/architecture.md) — workflow structure, patterns, file listing
 
-# Install dependencies (after modifying pyproject.toml)
-uv pip install -e .
-```
+**Credentials & Setup:**
+- [Credentials Setup](docs/CREDENTIALS_SETUP.md) — unified guide for all workflow credentials
 
-## Code Style
+**Per-Workflow Docs:**
+- [Google Drive](docs/google-drive/) — setup, implementation, test reports
+- [Reddit](docs/reddit/) — setup, plan, implementation docs
+- [Amazon](docs/amazon/) — setup guide
+- [Google Photos](docs/google-photos/) — setup (API deprecated, cannot automate)
+- [LinkedIn](docs/linkedin/) — research, plan, implementation docs
+- [Local K8s](docs/local-k8s/) — local Kubernetes deployment docs
 
-All imports must be at the top of a given file. Do not import libraries inside of functions, classes, etc.
+**Infrastructure:**
+- [Infrastructure Setup](infra/README.md) — bootstrap server script
+- [Kubernetes](infra/k8s/README.md) — local K8s deployment
 
-### Running Prefect Server
-
-Start the Prefect UI and server using Docker:
-
-```bash
-docker run -p 4200:4200 --rm prefecthq/prefect:3-latest -- prefect server start --host 0.0.0.0
-```
-
-Access the Prefect UI at http://localhost:4200
-
-
-## Architecture
-
-### Workflow Structure
-
-All backup workflows follow a consistent pattern:
-
-1. **Task-based design**: Each workflow is composed of Prefect `@task` decorated functions for granular operations (authentication, API calls, file downloads, data processing)
-2. **Flow orchestration**: A main `@flow` decorated function coordinates tasks and manages the overall backup process
-3. **Local-first**: All backups are stored in `./backups/local/` with a hierarchical structure: `platform/username/content-type/`
-4. **Metadata preservation**: Each workflow saves both the original content and structured metadata (JSON) for future querying
-
-### Workflow Files
-
-**Working workflows:**
-- `workflows/github.py` - Clones repositories and extracts commit history using GitHub GraphQL API
-- `workflows/twitter.py` - Downloads tweets, bookmarks, and likes with media files using the X API v2 (xdk SDK)
-- `workflows/youtube.py` - Downloads videos via yt-dlp
-- `workflows/crunchyroll.py` - Downloads anime via multi-downloader-nx
-- `workflows/reddit.py` - Downloads saved posts, comments, and upvoted content using PRAW
-- `workflows/google_drive.py` - Downloads files and folders with Google Workspace exports using Drive API
-- `workflows/amazon.py` - Downloads order history (requires Python 3.12 or 3.11)
-- `workflows/example.py` - Template showing basic Prefect flow structure
-
-**Cannot be automated** (in `workflows/cannot-automate/`):
-- `workflows/cannot-automate/google_photos.py` - Google deprecated Library API scopes on April 1, 2025. See README in that directory.
-
-**Workflows needing fixes** (in `workflows/to-fix/`):
-- `workflows/to-fix/instagram.py` - Downloads user posts and saved posts
-- `workflows/to-fix/notion.py` - Exports pages as markdown with embedded media
-
-### Key Patterns
-
-**Credentials Management**: Workflows expect credentials to be:
-- Loaded from Prefect Blocks (e.g., `GitHubCredentials.load("github-freddiev4")`)
-- Passed as parameters to the main flow function
-- Stored in `.env` file (structure defined in `.env.example`, though currently empty)
-
-**Caching**: Most tasks use `cache_policy=NO_CACHE` to ensure fresh data on each run, avoiding stale backups
-
-**Error Handling**: Workflows implement:
-- Retry logic for transient API errors (see `get_all_repositories()` in github.py)
-- Graceful degradation (continue on individual item failures)
-- Detailed logging to stdout
-
-**Date Filtering**: GitHub workflow supports `until_date` parameter to enable incremental backups (only fetch data up to a specific date)
-
-## Common Tasks
-
-### Creating a New Backup Workflow
-
-1. Create a new file in `workflows/` following the pattern: `workflows/platform_name.py`
-2. **Create a Prefect Block** in `blocks/` if the platform doesn't already have one (e.g., `blocks/platform_block.py`). Every new service needs a credentials block that extends `prefect.blocks.core.Block` with `SecretStr` fields for tokens/keys. See `blocks/discord_block.py` or `blocks/reddit_block.py` for examples. Also add the corresponding env vars to `.env.example`.
-3. Implement task functions for:
-   - Authentication/credential loading
-   - Fetching data from the platform API
-   - Downloading media/attachments
-   - Saving structured metadata
-4. Create a main flow function that orchestrates these tasks
-5. Follow the backup directory structure: `./backups/local/platform/username/content_type/`
-6. Save a metadata summary JSON file with statistics about what was backed up
-
-### Running a Workflow Manually
-
-```bash
-# Direct execution (if workflow has __main__ block)
-python workflows/github.py
-
-# Using Prefect CLI (requires deployment)
-prefect deployment build workflows/example.py:main --name example --cron "0 8 * * *"
-prefect deployment run example
-```
-
-### Registering Integration Blocks
-
-For workflows that use Prefect integrations:
-
-```bash
-# GitHub
-prefect block register -m prefect_github
-```
-
-Then configure the block through the Prefect UI at http://localhost:4200
-
-## Important Notes
-
-- **No Remote Backup Yet**: Remote NAS backup functionality is commented out in workflows (see `backup_to_remote_filesystem()` in github.py)
-- **API Rate Limits**: All workflows use `wait_on_rate_limit=True` or implement retry logic for rate limiting
-- **Large Datasets**: Workflows support `max_*` parameters to limit download size during development/testing
-- **Authentication**: Most workflows support multiple auth methods (OAuth tokens, API keys, session files) to handle different platform requirements
+**Other:**
+- [Workflows README](workflows/README.md) — workflow overview
+- [Cannot Automate](workflows/cannot-automate/README.md) — workflows that require manual intervention
+- [Workflow Automation Status](docs/WORKFLOW_AUTOMATION_STATUS.md) — automation readiness per workflow
+- [Workflow Fixes Summary](docs/WORKFLOW_FIXES_SUMMARY.md) — historical fix log
