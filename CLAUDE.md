@@ -48,6 +48,12 @@ Amazon workflow requires Python 3.12 or 3.11 (`uv venv --python 3.12`).
 - [LinkedIn](docs/linkedin/) — research, plan, implementation docs
 - [Local K8s](docs/local-k8s/) — local Kubernetes deployment docs
 
-**Status & History:**
+**Infrastructure:**
+- [Infrastructure Setup](infra/README.md) — bootstrap server script
+- [Kubernetes](infra/k8s/README.md) — local K8s deployment
+
+**Other:**
+- [Workflows README](workflows/README.md) — workflow overview
+- [Cannot Automate](workflows/cannot-automate/README.md) — workflows that require manual intervention
 - [Workflow Automation Status](docs/WORKFLOW_AUTOMATION_STATUS.md) — automation readiness per workflow
 - [Workflow Fixes Summary](docs/WORKFLOW_FIXES_SUMMARY.md) — historical fix log
