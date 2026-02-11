@@ -1,92 +1,44 @@
-# aqueduct
-A repository for DAG-based backup to NAS
+# Aqueduct
+
+A DAG-based backup system for archiving personal data from various platforms (GitHub, Twitter/X, Reddit, YouTube, Google Drive, Amazon, Discord, Crunchyroll) to local storage. It uses [Prefect](https://www.prefect.io/) as the workflow orchestration framework to schedule and manage backup tasks.
+
+## How It Works
+
+Each platform has a dedicated workflow built as a Prefect flow. Workflows handle authentication, API pagination, media downloads, and metadata preservation. All backups are stored locally in a consistent directory structure (`./backups/local/platform/username/content_type/`) with structured JSON metadata for future querying.
 
 ## Prerequisites
 
-Ensure [`uv`](https://docs.astral.sh/uv/) is installed following their [official documentation](https://docs.astral.sh/uv/getting-started/installation/).
+- [`uv`](https://docs.astral.sh/uv/) for Python version and dependency management
+- Python 3.10 - 3.13 (3.12 or 3.11 required for the Amazon workflow)
 
-### Python Version Requirements
-
-- **Most workflows**: Python 3.10 - 3.13
-- **Amazon Orders workflow**: Python 3.12 or 3.11 only (due to `pillow` dependency constraints)
-
-To install and use Python 3.12 for the Amazon workflow:
+## Quick Start
 
 ```bash
-# Install Python 3.12
-uv python install 3.12
-
-# Create venv with Python 3.12
+# Create and activate virtual environment
 uv venv --python 3.12
-
-# Activate and install
 source .venv/bin/activate
+
+# Install dependencies
 uv pip install -e .
+
+# Run a workflow directly
+python workflows/github.py
 ```
-
-## Setup Steps
-
-1. Activate the virtual environment:
-   ```bash
-   source .venv/bin/activate
-   ```
-
-2. Install dependencies:
-
-```bash
-uv pip install -e .
-```
-
-
-
-## Available Workflows
-
-Aqueduct includes several backup workflows for different platforms:
-
-- **GitHub** (`workflows/github.py`) - Clones repositories and commit history
-- **YouTube** (`workflows/youtube.py`) - Downloads videos via yt-dlp
-- **Reddit** (`workflows/reddit.py`) - Downloads saved posts, comments, upvoted content
-- **Google Drive** (`workflows/google_drive.py`) - Downloads files and folders with Google Workspace exports
-- **Amazon Orders** (`workflows/amazon.py`) - Downloads order history ⚠️ Requires Python 3.12
-- **Crunchyroll** (`workflows/crunchyroll.py`) - Downloads anime (requires manual config)
-
-See [WORKFLOW_FIXES_SUMMARY.md](docs/WORKFLOW_FIXES_SUMMARY.md) for detailed information about each workflow.
 
 ## Running Prefect
 
-Start the Prefect UI & server using docker:
+Start the Prefect UI and server using Docker:
 
 ```bash
 docker run -p 4200:4200 --rm prefecthq/prefect:3-latest -- prefect server start --host 0.0.0.0
 ```
 
-## Running the example workflow
+Access the Prefect UI at http://localhost:4200
 
-There are two ways to run a workflow:
+## Further Documentation
 
-1. Directly run the workflow with Python, based on the `__main__` block:
-
-```bash
-python workflows/example.py
-```
-
-2. Deploy the workflow as a Prefect deployment, and run it:
-
-```bash
-prefect deployment build workflows/example.py:main --name example --cron "0 8 * * *"
-prefect deployment run example
-```
-
-> ![NOTE]
-> The `cron` parameter is used to schedule the deployment.
-> You need to set the entrypoint to the `main` function of the workflow using the `@flow` decorator, and the function name in the path to the workflow file e.g. `workflows/example.py:main` or `workflows/github.py:backup_github_repositories`
-
-## Registering Integration Blocks:
-
-### GitHub
-
-```bash
-prefect block register -m prefect_github
-```
-
-Go to http://localhost:4200 in your browser to see the project.
+- **[workflows/README.md](workflows/README.md)** — Detailed setup, usage instructions, and configuration for every backup workflow.
+- **[workflows/cannot-automate/README.md](workflows/cannot-automate/README.md)** — Workflows that cannot be fully automated due to API deprecations or platform restrictions (Google Photos, iCloud, LinkedIn).
+- **[infra/README.md](infra/README.md)** — Bootstrap script for installing development and DevOps tools (Docker, kubectl, kind, ArgoCD) on new servers.
+- **[infra/k8s/README.md](infra/k8s/README.md)** — Kubernetes and ArgoCD infrastructure for deploying Aqueduct workflows via GitOps on a local Kind cluster.
+- **[docs/2026-02-05/google-drive/README.md](docs/2026-02-05/google-drive/README.md)** — In-depth Google Drive backup workflow documentation including OAuth setup, incremental backups, and troubleshooting.
