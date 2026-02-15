@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "931d420fb916",
+  "strategy": "manual-commit",
+  "branch": "freddiev4/reorganize-tailscale-script",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "CLAUDE.md",
+    "Makefile"
+  ],
+  "sessions": [
+    {
+      "metadata": "/93/1d420fb916/0/metadata.json",
+      "transcript": "/93/1d420fb916/0/full.jsonl",
+      "context": "/93/1d420fb916/0/context.md",
+      "content_hash": "/93/1d420fb916/0/content_hash.txt",
+      "prompt": "/93/1d420fb916/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 142,
+    "cache_creation_tokens": 190880,
+    "cache_read_tokens": 574972,
+    "output_tokens": 3881,
+    "api_call_count": 17
+  }
+}

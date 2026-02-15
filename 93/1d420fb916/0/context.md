@@ -1,0 +1,16 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+ok can you take a look at this repo, and come up with a plan (if it possbile to do) to make it so we can use the makefile to: run workflows with python, run them in docker, and run them in local-k8s (w/ kind)? Like i want to be able to do "make workflow github" and then "make workflow github docker" and "make workflow github k8s"
+
+### Prompt 2
+
+for credential handling lets mount .env into the container. for argument passing no i dont want to pass custom arguments yet. how would the auto discovery work for workflows? and for pre-reqs, we should check for venv, docker image, and k8s cluster running yes
+
+### Prompt 3
+
+lets go with option C. also update the CLAUDE.md to ensure that we make that type of update when creating new workflows so you dont forget in the future
+

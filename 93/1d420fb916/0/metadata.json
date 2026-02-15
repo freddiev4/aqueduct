@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "931d420fb916",
+  "session_id": "7258d9d5-a256-49ad-8ad1-d637e6486ee2",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-15T19:53:55.339877Z",
+  "branch": "freddiev4/reorganize-tailscale-script",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "CLAUDE.md",
+    "Makefile"
+  ],
+  "agent": "Claude Code",
+  "transcript_identifier_at_start": "c8d09d05-fb2f-41e4-9edd-a8b5112a1867",
+  "token_usage": {
+    "input_tokens": 142,
+    "cache_creation_tokens": 190880,
+    "cache_read_tokens": 574972,
+    "output_tokens": 3881,
+    "api_call_count": 17
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-15T19:53:55.251957Z",
+    "agent_lines": 0,
+    "human_added": 1156,
+    "human_modified": 143,
+    "human_removed": 0,
+    "total_committed": 1299,
+    "agent_percentage": 0
+  }
+}
