@@ -17,8 +17,14 @@ The script installs the following tools:
 | **kubectl** | ✓ | ✓ | Kubernetes CLI |
 | **kind** | ✓ | ✓ | Kubernetes in Docker (local clusters) |
 | **ArgoCD CLI** | ✓ | ✓ | GitOps deployment tool |
+| **GitHub CLI (gh)** | ✓ | ✓ | GitHub operations from command line |
 | **Atuin** | ✓ | ✓ | Enhanced shell history with sync |
 | **Claude Code** | ✓ | ✓ | AI-powered development assistant |
+| **Claude Agents/Plugins** | ✓ | ✓ | Custom Claude Code configurations |
+| **uv** | ✓ | ✓ | Fast Python package manager |
+| **Bun** | ✓ | ✓ | Fast JavaScript runtime and package manager |
+| **mas** | ✓ | - | Mac App Store CLI |
+| **Tailscale** | ✓ | ✓ | VPN for secure remote access (installed last) |
 | **VirtualBox** | ✓ (pre-2016 Macs) | - | VM hypervisor (for older Macs) |
 
 ## Quick Start
@@ -60,7 +66,7 @@ curl -fsSL https://raw.githubusercontent.com/your-username/aqueduct/main/infra/b
 - Prompts before reinstalling existing tools
 - Continues if individual installations fail
 - Handles permissions automatically (requests sudo when needed)
-- Installs tools in dependency order (Homebrew → Docker → kind → kubectl → ArgoCD → Atuin → Claude Code)
+- Installs tools in dependency order (Homebrew → Docker → kind → kubectl → ArgoCD → GitHub CLI → Atuin → Claude Code → Claude Config → uv → Bun → mas → Tailscale)
 
 ### Homebrew Installation (macOS)
 - Automatically installs Homebrew if not present
@@ -87,10 +93,58 @@ The script automatically detects Mac model year:
 
 **Note**: Macs older than 2016 may not support modern Docker Desktop (requires macOS 11+). On these systems, you may need to use Docker Toolbox instead.
 
+### GitHub CLI (gh)
+- Interact with GitHub from the command line
+- Create/view pull requests and issues
+- Clone repositories, manage releases, and more
+- After installation, run `gh auth login` to authenticate
+
 ### Atuin Shell History
 - Enhanced shell history with fuzzy search
 - Optional sync across machines
 - After installation, run `atuin init` to enable in your shell
+
+### Claude Code Configuration
+The script installs Claude Code and automatically syncs:
+- **Custom agents** from the freddiev4/agents repository
+- **Plugins** for extended functionality
+- **Skills** for specialized tasks
+- **Settings** for Claude Code preferences
+
+A `sync-claude-settings` shell command is added to your configuration to easily update these settings later.
+
+### uv Python Package Manager
+- Ultra-fast Python package installer and resolver
+- Drop-in replacement for pip and pip-tools
+- 10-100x faster than pip
+- After installation, use `uv pip install` instead of `pip install`
+
+### Bun JavaScript Runtime
+- Fast all-in-one JavaScript runtime (Node.js alternative)
+- Built-in bundler, test runner, and package manager
+- Drop-in replacement for npm, yarn, and pnpm
+- Significantly faster than Node.js for many tasks
+
+### mas (Mac App Store CLI)
+- Install Mac App Store apps from the command line
+- List installed apps and search for new ones
+- The script installs Reeder 5 (app ID: 1186187538) automatically
+- **Note**: For macOS 12 and older, installs a compatible version via special handling
+
+### Tailscale VPN
+**Installed last as the final setup step**
+
+Tailscale provides secure remote access to your server:
+- Creates a private network across all your devices
+- Works through firewalls and NAT without configuration
+- Each device gets a stable private IP (100.x.x.x range)
+- Optional security lockdown to make server **only** accessible via Tailscale
+
+After installation, the script prompts you to:
+1. Connect to your Tailscale network (`tailscale up`)
+2. Optionally run the security lockdown script (`~/aqueduct/infra/tailscale-setup.sh`)
+
+**Security Lockdown**: When enabled, uses macOS firewall and packet filter (pf) to block all incoming connections except from Tailscale IPs. The script automatically detects your current Tailscale IP and ensures your server is only accessible when connected to your Tailscale VPN.
 
 ### Version Report
 After installation completes, the script generates a JSON report:
@@ -120,8 +174,17 @@ Example output (Linux):
     "kubectl": "v1.29.0",
     "kind": "0.31.0",
     "argocd": "v2.9.3",
+    "gh": "gh version 2.40.1",
     "atuin": "18.0.0",
-    "claude": "1.2.3"
+    "claude": "1.2.3",
+    "uv": "uv 0.1.0",
+    "bun": "1.0.25",
+    "mas": "not installed",
+    "tailscale": "1.94.2",
+    "tailscale_ip": "100.116.110.79",
+    "claude_agents": 5,
+    "claude_plugins": 3,
+    "claude_skills": 4
   }
 }
 ```
@@ -147,8 +210,17 @@ Example output (macOS with Colima):
     "kubectl": "v1.29.0",
     "kind": "0.31.0",
     "argocd": "v2.9.3",
+    "gh": "gh version 2.40.1",
     "atuin": "18.0.0",
-    "claude": "1.2.3"
+    "claude": "1.2.3",
+    "uv": "uv 0.1.0",
+    "bun": "1.0.25",
+    "mas": "1.8.6",
+    "tailscale": "1.94.2",
+    "tailscale_ip": "100.116.110.79",
+    "claude_agents": 5,
+    "claude_plugins": 3,
+    "claude_skills": 4
   }
 }
 ```
@@ -185,10 +257,108 @@ eval "$(atuin init zsh)"
 
 Then restart your shell or source the config file.
 
+### GitHub CLI
+Authenticate with GitHub before using:
+```bash
+gh auth login
+```
+
+Follow the prompts to authenticate via web browser or token.
+
 ### Claude Code
 On first use, Claude Code will prompt you to log in:
 ```bash
 claude
+```
+
+The script automatically installs custom agents, plugins, and skills. To update them later:
+```bash
+sync-claude-settings
+```
+
+### uv Python Package Manager
+Use uv as a faster alternative to pip:
+```bash
+# Install packages
+uv pip install requests
+
+# Create virtual environment
+uv venv
+
+# Install from requirements.txt
+uv pip install -r requirements.txt
+```
+
+### Bun
+Use bun for JavaScript/TypeScript projects:
+```bash
+# Run a script
+bun run script.ts
+
+# Install dependencies
+bun install
+
+# Create a new project
+bun init
+```
+
+### mas (Mac App Store CLI)
+List and install Mac App Store apps:
+```bash
+# List installed apps
+mas list
+
+# Search for apps
+mas search "App Name"
+
+# Install an app by ID
+mas install 1186187538
+```
+
+### Tailscale
+After installation, connect to your Tailscale network:
+```bash
+# Connect to Tailscale
+tailscale up
+
+# Check status
+tailscale status
+
+# View your Tailscale IP
+tailscale ip
+```
+
+#### Tailscale Security Lockdown
+To make your server **only** accessible via Tailscale:
+
+1. **Ensure you're connected to Tailscale first**:
+   ```bash
+   tailscale status
+   ```
+
+2. **Run the security setup script**:
+   ```bash
+   cd ~/aqueduct/infra
+   sudo ./tailscale-setup.sh
+   ```
+
+This will:
+- Enable macOS Application Firewall with stealth mode
+- Configure packet filter (pf) to only allow Tailscale IPs (100.64.0.0/10)
+- Block all other incoming connections from local network and internet
+- Auto-detect and display your current Tailscale IP address
+- Make the rules persist across reboots
+
+**⚠️ WARNING**: After running the security script, you will **ONLY** be able to access this server via Tailscale. Make sure Tailscale is working before proceeding!
+
+To disable security lockdown:
+```bash
+sudo pfctl -d  # Disable packet filter
+```
+
+To re-enable:
+```bash
+sudo pfctl -e -f /etc/pf.conf
 ```
 
 ## Troubleshooting
@@ -300,9 +470,14 @@ sudo rm -rf /Applications/VirtualBox.app
 
 **Other Tools**:
 ```bash
+# Kubernetes tools
 sudo rm /usr/local/bin/kind
 sudo rm /usr/local/bin/kubectl
 sudo rm /usr/local/bin/argocd
+
+# GitHub CLI
+brew uninstall gh  # macOS
+sudo apt remove gh  # Linux
 
 # Atuin - remove binary and shell integration
 rm -rf ~/.atuin
@@ -310,6 +485,33 @@ rm -rf ~/.atuin
 
 # Claude Code has built-in uninstall
 claude uninstall
+
+# Claude settings
+rm -rf ~/.claude/agents ~/.claude/plugins ~/.claude/skills
+# Remove sync-claude-settings function from your shell config
+
+# uv
+rm -rf ~/.cargo/bin/uv ~/.local/bin/uv
+
+# Bun
+rm -rf ~/.bun
+
+# mas
+brew uninstall mas  # macOS
+
+# Tailscale (macOS)
+brew uninstall --cask tailscale
+sudo rm -rf /Applications/Tailscale.app
+
+# Tailscale (Linux)
+sudo apt remove tailscale  # Ubuntu/Debian
+sudo yum remove tailscale  # CentOS/RHEL
+
+# Remove Tailscale security configuration (if applied)
+sudo pfctl -d  # Disable packet filter
+sudo rm /etc/pf.anchors/tailscale
+sudo rm /Library/LaunchDaemons/com.tailscale.pf.plist
+# Edit /etc/pf.conf and remove the tailscale anchor lines
 ```
 
 ## Contributing
