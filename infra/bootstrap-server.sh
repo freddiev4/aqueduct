@@ -17,6 +17,8 @@
 #   - uv Python package manager for fast dependency management
 #   - Bun JavaScript runtime for fast JS/TS execution
 #   - mas (Mac App Store CLI) and specific apps (macOS only)
+#   - Tailscale VPN for secure remote access
+#   - Optional Tailscale-only access security lockdown
 #   - Automatic Homebrew installation on macOS
 #   - VirtualBox support for older Macs
 #   - JSON version report generation
@@ -39,7 +41,8 @@
 #  12. Install uv Python package manager
 #  13. Install Bun JavaScript runtime
 #  14. Install mas (Mac App Store CLI) and specific apps
-#  15. Generate a timestamped JSON report of installed versions
+#  15. Install Tailscale VPN and optionally configure security
+#  16. Generate a timestamped JSON report of installed versions
 #
 
 set -e  # Exit on error
@@ -1130,6 +1133,154 @@ install_docker() {
     fi
 }
 
+# Install Tailscale VPN
+install_tailscale() {
+    local os=$1
+
+    info "Installing Tailscale..."
+
+    # Check if Tailscale is already installed
+    if command_exists tailscale; then
+        local current_version=$(tailscale version 2>/dev/null | head -n1 || echo "unknown")
+        warn "Tailscale is already installed (version: ${current_version})"
+        read -p "Do you want to reinstall? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            info "Skipping Tailscale installation"
+
+            # Still prompt for security setup
+            echo
+            warn "⚠️  SECURITY: Tailscale is installed but may not be secured"
+            read -p "Would you like to configure Tailscale-only access now? (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                # Check if we have the security docs
+                if [ -f "$HOME/aqueduct/infra/tailscale-setup.sh" ]; then
+                    echo
+                    info "Running Tailscale security setup..."
+                    cd "$HOME/aqueduct/infra"
+                    sudo ./tailscale-setup.sh
+                else
+                    error "Security setup script not found at ~/aqueduct/docs/tailscale-security/setup.sh"
+                    info "Please ensure the aqueduct repository is cloned to ~/aqueduct"
+                fi
+            fi
+            return 0
+        fi
+    fi
+
+    if [ "$os" = "darwin" ]; then
+        # macOS - Install via Homebrew cask
+        if ! command_exists brew; then
+            error "Homebrew is required to install Tailscale on macOS"
+            return 1
+        fi
+
+        info "Installing Tailscale via Homebrew..."
+
+        # Remove any existing Tailscale app first to avoid conflicts
+        if [ -d "/Applications/Tailscale.app" ]; then
+            warn "Removing existing Tailscale app..."
+            sudo rm -rf /Applications/Tailscale.app 2>/dev/null || true
+        fi
+
+        if ! brew install --cask tailscale; then
+            error "Failed to install Tailscale"
+            warn "You may need to run this manually: brew install --cask tailscale"
+            return 1
+        fi
+
+        # Launch Tailscale app
+        info "Launching Tailscale app..."
+        open /Applications/Tailscale.app
+
+        info "✓ Tailscale installed successfully"
+        warn "Please approve any system extension prompts in System Settings → Privacy & Security"
+
+    elif [ "$os" = "linux" ]; then
+        # Linux - Use official installation script
+        info "Installing Tailscale via official script..."
+
+        if ! curl -fsSL https://tailscale.com/install.sh | sh; then
+            error "Failed to install Tailscale"
+            return 1
+        fi
+
+        # Start Tailscale service
+        info "Starting Tailscale service..."
+        sudo systemctl enable --now tailscaled
+
+        info "✓ Tailscale installed successfully"
+    else
+        error "Tailscale installation not supported for OS: ${os}"
+        return 1
+    fi
+
+    # Wait for daemon to start
+    info "Waiting for Tailscale daemon to start..."
+    local max_wait=10
+    local count=0
+    while ! tailscale status &>/dev/null && [ $count -lt $max_wait ]; do
+        sleep 1
+        count=$((count + 1))
+    done
+
+    if tailscale status &>/dev/null; then
+        info "✓ Tailscale daemon is running"
+    else
+        warn "Tailscale daemon may not be running yet. You may need to start it manually."
+    fi
+
+    # Check if already connected to Tailscale
+    if tailscale status 2>&1 | grep -q "100\."; then
+        local tailscale_ip=$(tailscale ip -4 2>/dev/null || echo "unknown")
+        info "✓ Tailscale is connected! Your Tailscale IP: ${tailscale_ip}"
+    else
+        echo
+        warn "⚠️  Tailscale is installed but not connected to your network"
+        info "Please run: tailscale up"
+        info "Or use the Tailscale app to authenticate"
+        echo
+    fi
+
+    # Prompt for security configuration
+    echo
+    info "=========================================="
+    info "   SECURITY CONFIGURATION                "
+    info "=========================================="
+    echo
+    warn "⚠️  IMPORTANT: Your server is currently accessible from the public internet!"
+    echo
+    info "To secure this server so it's ONLY accessible via Tailscale:"
+    echo "  1. Make sure you're connected to Tailscale first (run 'tailscale status')"
+    echo "  2. The security setup script is located at:"
+    echo "     ~/aqueduct/docs/tailscale-security/setup.sh"
+    echo "  3. Run: cd ~/aqueduct/infra && sudo ./tailscale-setup.sh"
+    echo
+    warn "After running the security script, you will ONLY be able to access this server via Tailscale!"
+    echo
+
+    read -p "Would you like to configure Tailscale-only access now? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        # Check if we have the security docs
+        if [ -f "$HOME/aqueduct/infra/tailscale-setup.sh" ]; then
+            echo
+            info "Running Tailscale security setup..."
+            cd "$HOME/aqueduct/docs/tailscale-security"
+            sudo ./setup.sh
+        else
+            error "Security setup script not found at ~/aqueduct/docs/tailscale-security/setup.sh"
+            info "Please ensure the aqueduct repository is cloned to ~/aqueduct"
+        fi
+    else
+        echo
+        warn "Skipping security setup. You can run it later with:"
+        echo "  cd ~/aqueduct/infra && sudo ./tailscale-setup.sh"
+        echo
+    fi
+}
+
 # Write version report to JSON file
 write_version_report() {
     local os=$1
@@ -1156,6 +1307,8 @@ write_version_report() {
     local uv_version="not installed"
     local bun_version="not installed"
     local mas_version="not installed"
+    local tailscale_version="not installed"
+    local tailscale_ip="n/a"
 
     # Check for Homebrew (macOS only)
     if [ "$os" = "darwin" ] && command_exists brew; then
@@ -1226,6 +1379,15 @@ write_version_report() {
         mas_version=$(mas version 2>/dev/null || echo "installed (version unknown)")
     fi
 
+    if command_exists tailscale; then
+        tailscale_version=$(tailscale version 2>/dev/null | head -n1 || echo "installed (version unknown)")
+        if tailscale status &>/dev/null && tailscale status 2>&1 | grep -q "100\."; then
+            tailscale_ip=$(tailscale ip -4 2>/dev/null || echo "connected (IP unknown)")
+        else
+            tailscale_ip="not connected"
+        fi
+    fi
+
     local claude_agents_count=0
     local claude_plugins_count=0
     local claude_skills_count=0
@@ -1276,6 +1438,8 @@ write_version_report() {
     "uv": "${uv_version}",
     "bun": "${bun_version}",
     "mas": "${mas_version}",
+    "tailscale": "${tailscale_version}",
+    "tailscale_ip": "${tailscale_ip}",
     "claude_agents": ${claude_agents_count},
     "claude_plugins": ${claude_plugins_count},
     "claude_skills": ${claude_skills_count}
@@ -1371,6 +1535,10 @@ main() {
     install_mas || warn "mas installation failed, continuing..."
     echo
 
+    # Install and configure Tailscale last
+    install_tailscale "$OS" || warn "Tailscale installation failed, continuing..."
+    echo
+
     echo -e "${GREEN}========================================${NC}"
     echo -e "${GREEN}   Bootstrap Complete!                 ${NC}"
     echo -e "${GREEN}========================================${NC}"
@@ -1430,6 +1598,14 @@ main() {
     if [ "$OS" = "darwin" ] && command_exists mas; then
         echo "  - mas: $(mas version 2>/dev/null)"
     fi
+    if command_exists tailscale; then
+        echo "  - tailscale: $(tailscale version 2>/dev/null | head -n1)"
+        if tailscale status &>/dev/null && tailscale status 2>&1 | grep -q "100\."; then
+            echo "    IP: $(tailscale ip -4 2>/dev/null)"
+        else
+            echo "    Status: not connected"
+        fi
+    fi
     echo
 
     # Write version report
@@ -1477,6 +1653,11 @@ main() {
     if [ "$OS" = "darwin" ] && command_exists mas; then
         echo "  mas list                         - List installed Mac App Store apps"
         echo "  mas search <app>                 - Search for apps in Mac App Store"
+    fi
+    if command_exists tailscale; then
+        echo "  tailscale status                 - Check Tailscale connection status"
+        echo "  tailscale up                     - Connect to Tailscale network"
+        echo "  tailscale ip                     - Show your Tailscale IP addresses"
     fi
     echo
 
