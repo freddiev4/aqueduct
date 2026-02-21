@@ -23,6 +23,7 @@ The script installs the following tools:
 | **Claude Agents/Plugins** | ✓ | ✓ | Custom Claude Code configurations |
 | **uv** | ✓ | ✓ | Fast Python package manager |
 | **Bun** | ✓ | ✓ | Fast JavaScript runtime and package manager |
+| **Rust** | ✓ | ✓ | Rust toolchain (rustup, rustc, cargo) |
 | **mas** | ✓ | - | Mac App Store CLI |
 | **Tailscale** | ✓ | ✓ | VPN for secure remote access (installed last) |
 | **VirtualBox** | ✓ (pre-2016 Macs) | - | VM hypervisor (for older Macs) |
@@ -66,7 +67,7 @@ curl -fsSL https://raw.githubusercontent.com/your-username/aqueduct/main/infra/b
 - Prompts before reinstalling existing tools
 - Continues if individual installations fail
 - Handles permissions automatically (requests sudo when needed)
-- Installs tools in dependency order (Homebrew → Docker → kind → kubectl → ArgoCD → GitHub CLI → Atuin → Claude Code → Claude Config → uv → Bun → mas → Tailscale)
+- Installs tools in dependency order (Homebrew → Docker → kind → kubectl → ArgoCD → GitHub CLI → Atuin → Claude Code → Claude Config → uv → Bun → Rust → mas → Tailscale)
 
 ### Homebrew Installation (macOS)
 - Automatically installs Homebrew if not present
@@ -125,6 +126,12 @@ A `sync-claude-settings` shell command is added to your configuration to easily 
 - Drop-in replacement for npm, yarn, and pnpm
 - Significantly faster than Node.js for many tasks
 
+### Rust Toolchain
+- Complete Rust development environment via rustup
+- Includes rustc (Rust compiler) and cargo (build tool and package manager)
+- Automatically installs the stable toolchain
+- Easy updates via `rustup update`
+
 ### mas (Mac App Store CLI)
 - Install Mac App Store apps from the command line
 - List installed apps and search for new ones
@@ -179,6 +186,8 @@ Example output (Linux):
     "claude": "1.2.3",
     "uv": "uv 0.1.0",
     "bun": "1.0.25",
+    "rust": "1.78.0",
+    "cargo": "1.78.0",
     "mas": "not installed",
     "tailscale": "1.94.2",
     "tailscale_ip": "100.116.110.79",
@@ -215,6 +224,8 @@ Example output (macOS with Colima):
     "claude": "1.2.3",
     "uv": "uv 0.1.0",
     "bun": "1.0.25",
+    "rust": "1.78.0",
+    "cargo": "1.78.0",
     "mas": "1.8.6",
     "tailscale": "1.94.2",
     "tailscale_ip": "100.116.110.79",
@@ -301,6 +312,27 @@ bun install
 # Create a new project
 bun init
 ```
+
+### Rust
+The Rust toolchain is ready to use immediately after installation:
+```bash
+# Verify installation
+rustc --version
+cargo --version
+
+# Create a new project
+cargo new my_project
+cd my_project
+
+# Build and run
+cargo build
+cargo run
+
+# Update Rust
+rustup update
+```
+
+The Rust environment is automatically added to your PATH via `~/.cargo/env`.
 
 ### mas (Mac App Store CLI)
 List and install Mac App Store apps:
@@ -495,6 +527,9 @@ rm -rf ~/.cargo/bin/uv ~/.local/bin/uv
 
 # Bun
 rm -rf ~/.bun
+
+# Rust
+rustup self uninstall
 
 # mas
 brew uninstall mas  # macOS

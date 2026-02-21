@@ -16,6 +16,7 @@
 #   - sync-claude-settings command for easy Claude config updates
 #   - uv Python package manager for fast dependency management
 #   - Bun JavaScript runtime for fast JS/TS execution
+#   - Rust toolchain (rustup, rustc, cargo)
 #   - mas (Mac App Store CLI) and specific apps (macOS only)
 #   - Tailscale VPN for secure remote access
 #   - Optional Tailscale-only access security lockdown
@@ -40,9 +41,10 @@
 #  11. Add sync-claude-settings command to your shell config
 #  12. Install uv Python package manager
 #  13. Install Bun JavaScript runtime
-#  14. Install mas (Mac App Store CLI) and specific apps
-#  15. Install Tailscale VPN and optionally configure security
-#  16. Generate a timestamped JSON report of installed versions
+#  14. Install Rust toolchain (rustup, rustc, cargo)
+#  15. Install mas (Mac App Store CLI) and specific apps
+#  16. Install Tailscale VPN and optionally configure security
+#  17. Generate a timestamped JSON report of installed versions
 #
 
 set -e  # Exit on error
@@ -440,6 +442,45 @@ install_bun() {
     else
         warn "Bun may have been installed but is not in current PATH"
         warn "You may need to restart your shell or source your shell config"
+    fi
+}
+
+# Install Rust (rustup and cargo)
+install_rust() {
+    info "Installing Rust (rustup toolchain installer)..."
+
+    # Check if rustc is already installed
+    if command -v rustc &> /dev/null; then
+        local current_version=$(rustc --version 2>/dev/null || echo "unknown")
+        warn "Rust is already installed (${current_version})"
+        read -p "Do you want to reinstall? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            info "Skipping Rust installation"
+            return 0
+        fi
+    fi
+
+    # Download and run the official rustup installer
+    info "Downloading and running official rustup installer..."
+    if ! curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y; then
+        error "Failed to install Rust"
+        return 1
+    fi
+
+    # Source cargo env for current session
+    if [ -f "$HOME/.cargo/env" ]; then
+        source "$HOME/.cargo/env"
+    fi
+
+    # Verify installation
+    if command -v rustc &> /dev/null && command -v cargo &> /dev/null; then
+        info "✓ Rust installed successfully"
+        info "  rustc: $(rustc --version 2>/dev/null)"
+        info "  cargo: $(cargo --version 2>/dev/null)"
+    else
+        warn "Rust may have been installed but is not in current PATH"
+        warn "You may need to restart your shell or run: source \$HOME/.cargo/env"
     fi
 }
 
@@ -1306,6 +1347,8 @@ write_version_report() {
     local claude_version="not installed"
     local uv_version="not installed"
     local bun_version="not installed"
+    local rust_version="not installed"
+    local cargo_version="not installed"
     local mas_version="not installed"
     local tailscale_version="not installed"
     local tailscale_ip="n/a"
@@ -1375,6 +1418,14 @@ write_version_report() {
         bun_version=$(bun --version 2>/dev/null || echo "installed (version unknown)")
     fi
 
+    if command_exists rustc; then
+        rust_version=$(rustc --version 2>/dev/null | sed 's/rustc //' || echo "installed (version unknown)")
+    fi
+
+    if command_exists cargo; then
+        cargo_version=$(cargo --version 2>/dev/null | sed 's/cargo //' || echo "installed (version unknown)")
+    fi
+
     if [ "$os" = "darwin" ] && command_exists mas; then
         mas_version=$(mas version 2>/dev/null || echo "installed (version unknown)")
     fi
@@ -1437,6 +1488,8 @@ write_version_report() {
     "claude": "${claude_version}",
     "uv": "${uv_version}",
     "bun": "${bun_version}",
+    "rust": "${rust_version}",
+    "cargo": "${cargo_version}",
     "mas": "${mas_version}",
     "tailscale": "${tailscale_version}",
     "tailscale_ip": "${tailscale_ip}",
@@ -1532,6 +1585,9 @@ main() {
     install_bun || warn "Bun installation failed, continuing..."
     echo
 
+    install_rust || warn "Rust installation failed, continuing..."
+    echo
+
     install_mas || warn "mas installation failed, continuing..."
     echo
 
@@ -1595,6 +1651,12 @@ main() {
     if command_exists bun; then
         echo "  - bun: $(bun --version 2>/dev/null)"
     fi
+    if command_exists rustc; then
+        echo "  - rust: $(rustc --version 2>/dev/null)"
+        if command_exists cargo; then
+            echo "    cargo: $(cargo --version 2>/dev/null)"
+        fi
+    fi
     if [ "$OS" = "darwin" ] && command_exists mas; then
         echo "  - mas: $(mas version 2>/dev/null)"
     fi
@@ -1649,6 +1711,12 @@ main() {
     if command_exists bun; then
         echo "  bun run <script>                 - Run a script with Bun"
         echo "  bun install                      - Install dependencies"
+    fi
+    if command_exists cargo; then
+        echo "  cargo new <project>              - Create a new Rust project"
+        echo "  cargo build                      - Build a Rust project"
+        echo "  cargo run                        - Build and run a Rust project"
+        echo "  rustup update                    - Update Rust toolchain"
     fi
     if [ "$OS" = "darwin" ] && command_exists mas; then
         echo "  mas list                         - List installed Mac App Store apps"
